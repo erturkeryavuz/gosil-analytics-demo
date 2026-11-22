@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>GoSil — Frozen Precious Metals Accounting &amp; Statistical Research Showcase</title>
+  <meta name="description" content="100% synthetic frozen portfolio showcase of GoSil: exact fixed-point gold & silver accounting, 6-tier price separation, 31.1034768 g/oz currency decomposition, spread & 900s freshness gates, and walk-forward statistical evaluation." />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <a class="skip-link" href="#main-workspace">Skip to workspace</a>
+
+  <div class="top-banner" role="banner">
+    <div class="top-banner-inner">
+      <div class="banner-left">
+        <span class="synth-pill">Frozen · 100% Synthetic Showcase</span>
+        <span>Precious Metals Accounting &amp; Statistical Research · <strong>Zero Real Holdings</strong> · <strong>Zero Live Feeds</strong> · <strong>Not Investment Advice</strong></span>
+      </div>
+      <div class="banner-links">
+        <a href="notices.html">Synthetic Data Notices</a>
+        <a href="https://github.com/erturkeryavuz" target="_blank" rel="noopener noreferrer">Portfolio Profile</a>
+      </div>
+    </div>
+  </div>
+
+  <div class="shell">
+    <aside class="sidebar" aria-label="GoSil navigation">
+      <div class="brand-box">
+        <svg class="brand-svg" viewBox="0 0 40 40" fill="none" aria-hidden="true">
+          <rect x="1" y="1" width="38" height="38" rx="9" fill="#1b1b22" stroke="#d8b25c" stroke-width="1.4" />
+          <polygon points="8,27 13,18 25,18 28,27" fill="#d8b25c" fill-opacity="0.22" stroke="#d8b25c" stroke-width="1.7" stroke-linejoin="round" />
+          <polygon points="15,21 19,12 30,12 33,21" fill="#b8c4d4" fill-opacity="0.2" stroke="#b8c4d4" stroke-width="1.6" stroke-linejoin="round" />
+        </svg>
+        <div>
+          <h1 class="brand-name">GoSil</h1>
+          <p class="brand-tag">Precious Metals Accounting &amp; Research</p>
+        </div>
+      </div>
+
+      <nav class="rail-nav" role="tablist" aria-label="GoSil showcase sections" id="gosil-tablist">
+        <button class="rail-btn" role="tab" id="tab-overview" aria-controls="panel-overview" aria-selected="true" data-tab="overview"><span class="rail-num">01</span>Overview</button>
+        <button class="rail-btn" role="tab" id="tab-structure" aria-controls="panel-structure" aria-selected="false" tabindex="-1" data-tab="structure"><span class="rail-num">02</span>Market Structure</button>
+        <button class="rail-btn" role="tab" id="tab-decomp" aria-controls="panel-decomp" aria-selected="false" tabindex="-1" data-tab="decomp"><span class="rail-num">03</span>Currency Decomposition</button>
+        <button class="rail-btn" role="tab" id="tab-ledger" aria-controls="panel-ledger" aria-selected="false" tabindex="-1" data-tab="ledger"><span class="rail-num">04</span>Synthetic Ledger</button>
+        <button class="rail-btn" role="tab" id="tab-spread" aria-controls="panel-spread" aria-selected="false" tabindex="-1" data-tab="spread"><span class="rail-num">05</span>Spread &amp; Freshness</button>
+        <button class="rail-btn" role="tab" id="tab-forecast" aria-controls="panel-forecast" aria-selected="false" tabindex="-1" data-tab="forecast"><span class="rail-num">06</span>Forecast Evaluation</button>
+        <button class="rail-btn" role="tab" id="tab-arch" aria-controls="panel-arch" aria-selected="false" tabindex="-1" data-tab="arch"><span class="rail-num">07</span>Architecture &amp; Evidence</button>
+      </nav>
+
+      <div class="rail-foot">
+        <div><strong>Status:</strong> FROZEN (D23)</div>
+        <div>Unit: <code>31.1034768 g/oz</code></div>
+        <div>Math: <code>e4 TRY · ug mass</code></div>
+        <div>Data: <code>100% Synthetic</code></div>
+      </div>
+    </aside>
+
+    <main id="main-workspace" class="workspace">
+      <section id="panel-overview" class="view-panel" role="tabpanel" aria-labelledby="tab-overview"></section>
+      <section id="panel-structure" class="view-panel" role="tabpanel" aria-labelledby="tab-structure" hidden></section>
+      <section id="panel-decomp" class="view-panel" role="tabpanel" aria-labelledby="tab-decomp" hidden></section>
+      <section id="panel-ledger" class="view-panel" role="tabpanel" aria-labelledby="tab-ledger" hidden></section>
+      <section id="panel-spread" class="view-panel" role="tabpanel" aria-labelledby="tab-spread" hidden></section>
+      <section id="panel-forecast" class="view-panel" role="tabpanel" aria-labelledby="tab-forecast" hidden></section>
+      <section id="panel-arch" class="view-panel" role="tabpanel" aria-labelledby="tab-arch" hidden></section>
+    </main>
+  </div>
+
+  <footer class="site-footer">
+    <div class="footer-inner">
+      <div><strong>GoSil (FROZEN — Historical Research Showcase)</strong> · Independent portfolio project by Ertürk Eryavuz · 100% synthetic educational data · Zero real accounts or live feeds.</div>
+      <div><a href="notices.html">Synthetic Data Notices</a> · <a href="THIRD-PARTY-NOTICES.md">Notices (Markdown)</a></div>
+    </div>
+  </footer>
+
+  <noscript>
+    <div class="workspace">
+      <div class="notice notice-gold"><strong>JavaScript Required:</strong> Enable JavaScript to run GoSil's synthetic fixed-point calculators, currency decomposition waterfall, quote-freshness checks, and walk-forward forecast evaluator locally in your browser.</div>
+    </div>
+  </noscript>
+
+  <script src="data.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
