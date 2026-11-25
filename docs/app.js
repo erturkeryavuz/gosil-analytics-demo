@@ -4,10 +4,9 @@
   const DATA = window.GOSIL_SHOWCASE_DATA;
   if (!DATA) return;
 
-  const TROY_GRAMS = 31.1034768;
-
   const STATE = {
     tab: "overview",
+    overviewPreset: "gold_combined",
     tierMetal: "gold",
     decompPreset: "gold_combined",
     p0: "2400.00",
@@ -22,6 +21,17 @@
     forecastSeriesIdx: 0,
     forecastHorizon: "6",
   };
+
+  function cloneState() {
+    return Object.assign({}, STATE);
+  }
+
+  function restoreState(snap) {
+    if (!snap) return;
+    Object.keys(STATE).forEach((k) => {
+      if (Object.prototype.hasOwnProperty.call(snap, k)) STATE[k] = snap[k];
+    });
+  }
 
   function esc(val) {
     if (val === null || val === undefined) return "";
@@ -82,6 +92,12 @@
     return (neg ? "-" : "") + w.toString() + "." + f;
   }
 
+  function parseNum(str) {
+    const clean = String(str || "").replace(/,/g, "").trim();
+    const v = Number(clean);
+    return Number.isFinite(v) ? v : null;
+  }
+
   // Exact integer/BigInt currency decomposition using exact TROY_GRAMS = 311034768 / 10_000_000
   function computeExactDecomposition(p0Str, p1Str, e0Str, e1Str) {
     const p0 = parseScaledInt(p0Str, 4);
@@ -91,10 +107,9 @@
     if (p0 === null || p1 === null || e0 === null || e1 === null || p0 <= 0n || p1 <= 0n || e0 <= 0n || e1 <= 0n) {
       return { valid: false, error: "Enter positive decimal values for P0, P1, E0, and E1." };
     }
-    // Scale numerator by 10^7 (for TROY_GRAMS denominator) * 10^6 extra precision -> total scale 10^14
     const TROY_NUM = 311034768n;
-    const MULT = 10n ** 13n; // (p * e) has scale 10^8; * 10^7 for TROY_GRAMS * 10^6 precision => / 311034768 gives scale 10^14
-    const toTryG = (num1) => (num1 * MULT) / TROY_NUM; // scale 10^14
+    const MULT = 10n ** 13n;
+    const toTryG = (num1) => (num1 * MULT) / TROY_NUM;
 
     const g0 = toTryG(p0 * e0);
     const g1 = toTryG(p1 * e1);
@@ -105,7 +120,6 @@
     const interC = toTryG(dp * de);
     const totalDelta = g1 - g0;
 
-    // Exact percent returns (scale 10^6 -> 2 decimals)
     const pctScale = 10n ** 8n;
     const rUsd = (dp * pctScale) / p0;
     const rFx = (de * pctScale) / e0;
@@ -151,7 +165,6 @@
         bucket.total_cost_e4 += tx.total_cost_e4;
         bucket.fees_tax_e4 += tx.fee_e4 + tx.tax_e4;
       } else if (tx.side === "sell" && bucket.balance_ug > 0) {
-        // Proportional integer weighted-average cost reduction (exact integer floor)
         const removedCost = Math.floor((bucket.total_cost_e4 * tx.quantity_ug) / bucket.balance_ug);
         bucket.total_cost_e4 -= removedCost;
         bucket.balance_ug -= tx.quantity_ug;
@@ -174,9 +187,7 @@
       return { valid: false, code: "MALFORMED_PRICES", error: "Ask price (" + askStr + ") is below Bid price (" + bidStr + ") — rejected fail-closed (MALFORMED_PRICES)." };
     }
     const diff = ask - bid;
-    // mid_relative_spread = 2 * (ask - bid) / (ask + bid)
     const midSpreadPct = (2n * diff * 10n ** 8n) / (ask + bid);
-    // immediate_spread_drag = (ask - bid) / ask
     const dragPct = (diff * 10n ** 8n) / ask;
     return {
       valid: true,
@@ -191,7 +202,7 @@
   // ---------- Tab Navigation ----------
   function switchTab(tabName) {
     STATE.tab = tabName;
-    const tabs = Array.from(document.querySelectorAll("#gosil-tablist .rail-btn"));
+    const tabs = Array.from(document.querySelectorAll("#gosil-tablist .nav-tab"));
     tabs.forEach((btn) => {
       const active = btn.dataset.tab === tabName;
       btn.setAttribute("aria-selected", active ? "true" : "false");
@@ -204,14 +215,14 @@
   }
 
   function setupTabs() {
-    const tabs = Array.from(document.querySelectorAll("#gosil-tablist .rail-btn"));
+    const tabs = Array.from(document.querySelectorAll("#gosil-tablist .nav-tab"));
     tabs.forEach((btn) => {
       btn.addEventListener("click", () => switchTab(btn.dataset.tab));
       btn.addEventListener("keydown", (ev) => {
         const idx = tabs.indexOf(btn);
         let next = null;
-        if (ev.key === "ArrowDown" || ev.key === "ArrowRight") next = tabs[(idx + 1) % tabs.length];
-        else if (ev.key === "ArrowUp" || ev.key === "ArrowLeft") next = tabs[(idx - 1 + tabs.length) % tabs.length];
+        if (ev.key === "ArrowRight") next = tabs[(idx + 1) % tabs.length];
+        else if (ev.key === "ArrowLeft") next = tabs[(idx - 1 + tabs.length) % tabs.length];
         else if (ev.key === "Home") next = tabs[0];
         else if (ev.key === "End") next = tabs[tabs.length - 1];
         if (next) {
@@ -223,104 +234,165 @@
     });
   }
 
-  // ---------- Original SVG Visuals ----------
+  // ---------- Data-Grounded SVG Visualizations ----------
+  function computeNiceScale(minVal, maxVal, approxTicks, forceZero) {
+    let lo = minVal;
+    let hi = maxVal;
+    if (forceZero) {
+      if (lo > 0) lo = 0;
+      if (hi < 0) hi = 0;
+    }
+    const rawSpan = Math.max(1e-6, hi - lo);
+    const roughStep = rawSpan / Math.max(2, (approxTicks || 4) - 1);
+    const mag = Math.pow(10, Math.floor(Math.log10(roughStep)));
+    const norm = roughStep / mag;
+    let niceNorm;
+    if (norm <= 1.15) niceNorm = 1;
+    else if (norm <= 1.65) niceNorm = 1.5;
+    else if (norm <= 2.4) niceNorm = 2;
+    else if (norm <= 3.2) niceNorm = 2.5;
+    else if (norm <= 5.5) niceNorm = 5;
+    else niceNorm = 10;
+    const step = niceNorm * mag;
+    const niceMin = Math.floor(lo / step) * step;
+    const niceMax = Math.ceil(hi / step) * step;
+    const ticks = [];
+    const decimals = step < 1 ? Math.min(2, Math.ceil(-Math.log10(step))) : (Math.abs(step - Math.round(step)) > 1e-6 ? 1 : 0);
+    for (let v = niceMin; v <= niceMax + step * 0.001; v += step) {
+      ticks.push(Math.abs(v) < step * 1e-6 ? 0 : Number(v.toFixed(6)));
+      if (ticks.length > 9) break;
+    }
+    return { min: niceMin, max: niceMax, step: step, ticks: ticks, decimals: decimals };
+  }
+
   function renderTierBridgeSvg(metalKey) {
     const isGold = metalKey === "gold";
-    const accent = isGold ? "#d8b25c" : "#b8c4d4";
-    const bars = isGold
-      ? [
-          { lbl: "Tier 3: Parity", val: 2939.38, col: "#7c8ea6" },
-          { lbl: "Tier 4: Retail", val: 2995.00, col: "#b8c4d4" },
-          { lbl: "Tier 5: Bank Bid", val: 2910.00, col: "#e06363" },
-          { lbl: "Tier 5: Bank Ask", val: 3025.00, col: accent },
-          { lbl: "Tier 6: Net Exec", val: 3031.05, col: "#4dc28a" },
-        ]
-      : [
-          { lbl: "Tier 3: Parity", val: 34.61, col: "#7c8ea6" },
-          { lbl: "Tier 4: Retail", val: 36.10, col: "#b8c4d4" },
-          { lbl: "Tier 5: Bank Bid", val: 33.90, col: "#e06363" },
-          { lbl: "Tier 5: Bank Ask", val: 36.80, col: accent },
-          { lbl: "Tier 6: Net Exec", val: 36.87, col: "#4dc28a" },
-        ];
-    const W = 740, H = 220, padL = 62, padR = 24, padT = 26, padB = 38;
-    const minV = isGold ? 2850 : 32.5;
-    const maxV = isGold ? 3060 : 37.6;
-    const range = maxV - minV;
+    const tiers = DATA.six_price_tiers[metalKey].tiers;
+    const t3 = parseNum(tiers.find((t) => t.tier === 3).value);
+    const t4 = parseNum(tiers.find((t) => t.tier === 4).value);
+    const t5Parts = tiers.find((t) => t.tier === 5).value.split("/").map((s) => parseNum(s));
+    const t6 = parseNum(tiers.find((t) => t.tier === 6).value);
+    const accent = isGold ? "#D4AF63" : "#B9C6D6";
+
+    const bars = [
+      { lbl: "Tier 3: Parity", val: t3, col: "#758D92" },
+      { lbl: "Tier 4: Retail", val: t4, col: "#B9C6D6" },
+      { lbl: "Tier 5: Bank Bid", val: t5Parts[0], col: "#C96A6A" },
+      { lbl: "Tier 5: Bank Ask", val: t5Parts[1], col: accent },
+      { lbl: "Tier 6: Net Exec", val: t6, col: "#4E9F76" },
+    ];
+    const compact = window.innerWidth <= 420;
+    const W = compact ? 440 : 920;
+    const H = compact ? 186 : 220;
+    const padL = compact ? 50 : 64;
+    const padR = 18;
+    const padT = 26;
+    const padB = 34;
+    const vals = bars.map((b) => b.val);
+    const span = Math.max(0.5, Math.max(...vals) - Math.min(...vals));
+    const scale = computeNiceScale(Math.max(0, Math.min(...vals) - span * 0.35), Math.max(...vals) + span * 0.22, 4, false);
+    const minV = scale.min;
+    const maxV = scale.max;
+    const range = maxV - minV || 1;
     const plotW = W - padL - padR;
     const plotH = H - padT - padB;
     const yOf = (v) => padT + ((maxV - v) / range) * plotH;
     const slotW = plotW / bars.length;
+    const barW = compact ? 44 : 64;
 
     let grid = "";
-    for (let i = 0; i <= 4; i++) {
-      const gv = minV + (range * i) / 4;
+    scale.ticks.forEach((gv) => {
       const y = yOf(gv);
-      grid += '<line x1="' + padL + '" y1="' + y.toFixed(1) + '" x2="' + (W - padR) + '" y2="' + y.toFixed(1) + '" stroke="#242430" stroke-width="1" />';
-      grid += '<text x="' + (padL - 8) + '" y="' + (y + 4).toFixed(1) + '" fill="#8a8fa0" font-size="10.5" text-anchor="end" font-family="monospace">' + gv.toFixed(isGold ? 0 : 1) + "</text>";
-    }
+      grid += '<line x1="' + padL + '" y1="' + y.toFixed(1) + '" x2="' + (W - padR) + '" y2="' + y.toFixed(1) + '" stroke="#282C34" stroke-width="1" />';
+      grid += '<text x="' + (padL - 8) + '" y="' + (y + 3.5).toFixed(1) + '" fill="#8E96A3" font-size="10.5" text-anchor="end" font-family="monospace">' + gv.toFixed(scale.decimals) + "</text>";
+    });
 
     let rects = "";
     bars.forEach((b, i) => {
       const cx = padL + i * slotW + slotW / 2;
       const y = yOf(b.val);
       const h = Math.max(4, H - padB - y);
-      rects += '<rect x="' + (cx - 32).toFixed(1) + '" y="' + y.toFixed(1) + '" width="64" height="' + h.toFixed(1) + '" rx="4" fill="' + b.col + '" fill-opacity="0.82"><title>SYNTHETIC ' + esc(b.lbl + ": " + b.val + " TRY/g") + "</title></rect>";
-      rects += '<text x="' + cx.toFixed(1) + '" y="' + (y - 6).toFixed(1) + '" fill="#eeeff2" font-size="11" text-anchor="middle" font-family="monospace">' + b.val.toFixed(2) + "</text>";
-      rects += '<text x="' + cx.toFixed(1) + '" y="' + (H - 12) + '" fill="#9b9fae" font-size="10.5" text-anchor="middle">' + esc(b.lbl) + "</text>";
+      const shortLbl = compact ? b.lbl.replace("Tier ", "T") : b.lbl;
+      rects += '<rect x="' + (cx - barW / 2).toFixed(1) + '" y="' + y.toFixed(1) + '" width="' + barW + '" height="' + h.toFixed(1) + '" rx="4" fill="' + b.col + '" fill-opacity="0.86"><title>Synthetic ' + esc(b.lbl + ": " + b.val.toFixed(2) + " TRY/g") + "</title></rect>";
+      rects += '<text x="' + cx.toFixed(1) + '" y="' + (y - 6).toFixed(1) + '" fill="#F1EDE5" font-size="' + (compact ? "10" : "11") + '" font-weight="600" text-anchor="middle" font-family="monospace">' + b.val.toFixed(2) + "</text>";
+      rects += '<text x="' + cx.toFixed(1) + '" y="' + (H - 10) + '" fill="#A4ABB6" font-size="' + (compact ? "9.5" : "10.5") + '" text-anchor="middle">' + esc(shortLbl) + "</text>";
     });
 
     return (
-      '<div class="chart-box">' +
+      '<div class="chart-box" id="structure-bridge-box">' +
       '<svg viewBox="0 0 ' + W + " " + H + '" role="img" aria-label="Synthetic ' + esc(metalKey) + ' TRY per gram price tier comparison">' +
       grid + rects +
       "</svg>" +
-      '<div class="chart-legend"><span class="muted">SYNTHETIC ILLUSTRATION (TRY/g) — Theoretical parity (Tier 3) never equals executable bank bid (Tier 5) or net cost (Tier 6).</span></div></div>'
+      '<div class="chart-legend"><span>Theoretical parity (Tier 3) never equals executable bank bid (Tier 5) or net realized cost (Tier 6).</span></div></div>'
     );
   }
 
-  function renderDecompositionWaterfallSvg(res) {
+  function renderDecompositionWaterfallSvg(res, opts) {
+    const o = opts || {};
+    const isSilver = o.metal === "silver";
+    const metalColor = isSilver ? "#B9C6D6" : "#D4AF63";
+    const compact = Boolean(o.compact) || window.innerWidth <= 420;
     const items = [
-      { lbl: "USD Metal", val: res.usdNum, col: "#d8b25c" },
-      { lbl: "USD/TRY FX", val: res.fxNum, col: "#b8c4d4" },
-      { lbl: "Cross-Inter.", val: res.interNum, col: "#7d93c4" },
-      { lbl: "Total Δ TRY/g", val: res.totalNum, col: res.totalNum >= 0 ? "#4dc28a" : "#e06363" },
+      { lbl: compact ? "Metal" : "Metal Price Effect", val: res.usdNum, col: metalColor },
+      { lbl: compact ? "FX Rate" : "Exchange Rate Effect", val: res.fxNum, col: "#758D92" },
+      { lbl: compact ? "Combined" : "Combined Effect", val: res.interNum, col: "#8C98B8" },
+      { lbl: compact ? "Total Δ" : "Total Price Change", val: res.totalNum, col: res.totalNum >= 0 ? "#4E9F76" : "#C96A6A" },
     ];
-    const W = 680, H = 225, padL = 64, padR = 24, padT = 26, padB = 38;
+    const W = compact ? 440 : (o.overview ? 620 : 900);
+    const H = compact ? 182 : (o.overview ? 204 : 226);
+    const padL = compact ? 52 : 64;
+    const padR = 20;
+    const padT = 26;
+    const padB = 34;
     const plotW = W - padL - padR;
     const plotH = H - padT - padB;
-    const maxV = Math.max(1, ...items.map((x) => x.val), 0);
-    const minV = Math.min(-1, ...items.map((x) => x.val), 0);
+    const rawMax = Math.max(0, ...items.map((x) => x.val));
+    const rawMin = Math.min(0, ...items.map((x) => x.val));
+    const span = Math.max(1, rawMax - rawMin);
+    const padHi = rawMax > 0 ? rawMax + span * 0.11 : 0;
+    const padLo = rawMin < 0 ? rawMin - span * 0.11 : 0;
+    const scale = computeNiceScale(padLo, padHi, rawMin < 0 ? 5 : 4, true);
+    const maxV = scale.max;
+    const minV = scale.min;
     const range = maxV - minV || 1;
     const yOf = (v) => padT + ((maxV - v) / range) * plotH;
     const zeroY = yOf(0);
     const slotW = plotW / items.length;
+    const barW = compact ? 48 : 66;
 
-    let grid = '<line x1="' + padL + '" y1="' + zeroY.toFixed(1) + '" x2="' + (W - padR) + '" y2="' + zeroY.toFixed(1) + '" stroke="#4b4b60" stroke-width="1.3" />';
-    for (let i = 0; i <= 4; i++) {
-      const gv = minV + (range * i) / 4;
+    let grid = "";
+    scale.ticks.forEach((gv) => {
       const y = yOf(gv);
-      grid += '<line x1="' + padL + '" y1="' + y.toFixed(1) + '" x2="' + (W - padR) + '" y2="' + y.toFixed(1) + '" stroke="#22222d" stroke-width="1" />';
-      grid += '<text x="' + (padL - 8) + '" y="' + (y + 4).toFixed(1) + '" fill="#8a8fa0" font-size="10.5" text-anchor="end" font-family="monospace">' + gv.toFixed(1) + "</text>";
-    }
+      const isZero = gv === 0;
+      grid += '<line x1="' + padL + '" y1="' + y.toFixed(1) + '" x2="' + (W - padR) + '" y2="' + y.toFixed(1) + '" stroke="' + (isZero ? "#4B5260" : "#252932") + '" stroke-width="' + (isZero ? "1.3" : "1") + '" />';
+      const prefix = (minV < 0 && gv > 0) ? "+" : "";
+      grid += '<text x="' + (padL - 8) + '" y="' + (y + 3.5).toFixed(1) + '" fill="#8E96A3" font-size="10.5" text-anchor="end" font-family="monospace">' + prefix + gv.toFixed(scale.decimals) + "</text>";
+    });
 
     let bars = "";
     items.forEach((it, idx) => {
       const cx = padL + idx * slotW + slotW / 2;
       const y = it.val >= 0 ? yOf(it.val) : zeroY;
-      const h = Math.max(2.5, Math.abs(yOf(it.val) - zeroY));
+      const h = Math.max(3, Math.abs(yOf(it.val) - zeroY));
       const sign = it.val > 0 ? "+" : "";
-      bars += '<rect x="' + (cx - 34).toFixed(1) + '" y="' + y.toFixed(1) + '" width="68" height="' + h.toFixed(1) + '" rx="4" fill="' + it.col + '" fill-opacity="0.85"><title>SYNTHETIC ' + esc(it.lbl + ": " + sign + it.val.toFixed(4) + " TRY/g") + "</title></rect>";
-      const lblY = it.val >= 0 ? y - 6 : y + h + 13;
-      bars += '<text x="' + cx.toFixed(1) + '" y="' + lblY.toFixed(1) + '" fill="#eeeff2" font-size="11" text-anchor="middle" font-family="monospace">' + sign + it.val.toFixed(2) + "</text>";
-      bars += '<text x="' + cx.toFixed(1) + '" y="' + (H - 10) + '" fill="#9b9fae" font-size="11" text-anchor="middle">' + esc(it.lbl) + "</text>";
+      bars += '<rect x="' + (cx - barW / 2).toFixed(1) + '" y="' + y.toFixed(1) + '" width="' + barW + '" height="' + h.toFixed(1) + '" rx="4" fill="' + it.col + '" fill-opacity="0.88"><title>Synthetic ' + esc(it.lbl + ": " + sign + it.val.toFixed(4) + " TRY/g") + "</title></rect>";
+      const lblY = it.val >= 0 ? Math.max(14, y - 6) : Math.min(H - padB - 4, y + h + 13);
+      bars += '<text x="' + cx.toFixed(1) + '" y="' + lblY.toFixed(1) + '" fill="#F1EDE5" stroke="#141619" stroke-width="3.5" stroke-linejoin="round" paint-order="stroke" font-size="' + (compact ? "10.5" : "11") + '" font-weight="700" text-anchor="middle" font-family="monospace">' + sign + it.val.toFixed(2) + "</text>";
+      bars += '<text x="' + cx.toFixed(1) + '" y="' + (H - 10) + '" fill="' + (idx === 3 ? "#F1EDE5" : "#A4ABB6") + '" font-size="' + (compact ? "10" : "11") + '" font-weight="' + (idx === 3 ? "600" : "400") + '" text-anchor="middle">' + esc(it.lbl) + "</text>";
     });
 
+    const boxId = o.boxId ? ' id="' + esc(o.boxId) + '"' : "";
     return (
-      '<div class="chart-box">' +
-      '<svg viewBox="0 0 ' + W + " " + H + '" role="img" aria-label="Synthetic currency decomposition waterfall chart showing USD metal, FX, and interaction contributions">' +
+      '<div class="chart-box"' + boxId + ">" +
+      '<svg viewBox="0 0 ' + W + " " + H + '" role="img" aria-label="Synthetic price driver breakdown chart showing metal price effect, exchange-rate effect, combined effect, and total TRY per gram change">' +
       grid + bars +
       "</svg>" +
-      '<div class="chart-legend"><span class="muted">SYNTHETIC ALGEBRAIC IDENTITY: USD Metal + USD/TRY FX + Cross-Interaction = Exact Total Δ TRY/g (31.1034768 g/oz).</span></div></div>'
+      '<div class="chart-legend">' +
+      '<span><i class="legend-dot" style="background:' + metalColor + '"></i>' + (isSilver ? "Silver Price Effect" : "Gold Price Effect") + "</span>" +
+      '<span><i class="legend-dot" style="background:#758D92"></i>Exchange Rate Effect</span>' +
+      '<span><i class="legend-dot" style="background:#8C98B8"></i>Combined Effect</span>' +
+      '<span><i class="legend-dot" style="background:#4E9F76"></i>Total Price Change (TRY/g)</span>' +
+      "</div></div>"
     );
   }
 
@@ -330,24 +402,30 @@
     const sel = horizonObj.models[selKey];
     const naive = horizonObj.models.naive;
     const h = horizonObj.horizon_months;
-    const W = 740, H = 250, padL = 58, padR = 36, padT = 24, padB = 34;
+    const compact = window.innerWidth <= 420;
+    const W = compact ? 440 : 960;
+    const H = compact ? 186 : 236;
+    const padL = compact ? 46 : 58;
+    const padR = compact ? 22 : 36;
+    const padT = 22;
+    const padB = 32;
     const plotW = W - padL - padR;
     const plotH = H - padT - padB;
     const allV = vals.concat([Number(sel.band_lower), Number(sel.band_upper), Number(sel.final_point), Number(naive.final_point)]);
-    const minV = Math.min(...allV) * 0.98;
-    const maxV = Math.max(...allV) * 1.02;
+    const scale = computeNiceScale(Math.min(...allV), Math.max(...allV), 4, false);
+    const minV = scale.min;
+    const maxV = scale.max;
     const range = maxV - minV || 1;
     const totalPts = vals.length + h;
     const xOf = (i) => padL + (i / (totalPts - 1)) * plotW;
     const yOf = (v) => padT + ((maxV - v) / range) * plotH;
 
     let grid = "";
-    for (let i = 0; i <= 4; i++) {
-      const gv = minV + (range * i) / 4;
+    scale.ticks.forEach((gv) => {
       const y = yOf(gv);
-      grid += '<line x1="' + padL + '" y1="' + y.toFixed(1) + '" x2="' + (W - padR) + '" y2="' + y.toFixed(1) + '" stroke="#22222d" stroke-width="1" />';
-      grid += '<text x="' + (padL - 8) + '" y="' + (y + 4).toFixed(1) + '" fill="#8a8fa0" font-size="10.5" text-anchor="end" font-family="monospace">' + gv.toFixed(0) + "</text>";
-    }
+      grid += '<line x1="' + padL + '" y1="' + y.toFixed(1) + '" x2="' + (W - padR) + '" y2="' + y.toFixed(1) + '" stroke="#252932" stroke-width="1" />';
+      grid += '<text x="' + (padL - 8) + '" y="' + (y + 3.5).toFixed(1) + '" fill="#8E96A3" font-size="10.5" text-anchor="end" font-family="monospace">' + gv.toFixed(scale.decimals) + "</text>";
+    });
 
     const histPath = vals.map((v, i) => (i === 0 ? "M" : "L") + xOf(i).toFixed(1) + "," + yOf(v).toFixed(1)).join(" ");
     const origIdx = vals.length - 1;
@@ -359,88 +437,145 @@
       targX.toFixed(1) + "," + yOf(Number(sel.band_upper)).toFixed(1) + " " +
       targX.toFixed(1) + "," + yOf(Number(sel.band_lower)).toFixed(1);
 
-    const naiveLine = '<line x1="' + origX.toFixed(1) + '" y1="' + origY.toFixed(1) + '" x2="' + targX.toFixed(1) + '" y2="' + yOf(Number(naive.final_point)).toFixed(1) + '" stroke="#9b9fae" stroke-width="1.8" stroke-dasharray="4 4" />';
-    const selLine = '<line x1="' + origX.toFixed(1) + '" y1="' + origY.toFixed(1) + '" x2="' + targX.toFixed(1) + '" y2="' + yOf(Number(sel.final_point)).toFixed(1) + '" stroke="#d8b25c" stroke-width="2.4" />';
-    const sepLine = '<line x1="' + origX.toFixed(1) + '" y1="' + padT + '" x2="' + origX.toFixed(1) + '" y2="' + (H - padB) + '" stroke="#3e3e4f" stroke-width="1.2" stroke-dasharray="3 3" />';
+    const naiveLine = '<line x1="' + origX.toFixed(1) + '" y1="' + origY.toFixed(1) + '" x2="' + targX.toFixed(1) + '" y2="' + yOf(Number(naive.final_point)).toFixed(1) + '" stroke="#A4ABB6" stroke-width="1.8" stroke-dasharray="4 4" />';
+    const selLine = '<line x1="' + origX.toFixed(1) + '" y1="' + origY.toFixed(1) + '" x2="' + targX.toFixed(1) + '" y2="' + yOf(Number(sel.final_point)).toFixed(1) + '" stroke="#D4AF63" stroke-width="2.5" />';
+    const sepLine = '<line x1="' + origX.toFixed(1) + '" y1="' + padT + '" x2="' + origX.toFixed(1) + '" y2="' + (H - padB) + '" stroke="#444B57" stroke-width="1.2" stroke-dasharray="3 3" />';
 
     return (
-      '<div class="chart-box">' +
+      '<div class="chart-box" id="forecast-chart-box">' +
       '<svg viewBox="0 0 ' + W + " " + H + '" role="img" aria-label="Synthetic 36-month series with ' + h + '-month walk-forward forecast and non-probabilistic sensitivity band">' +
       grid + sepLine +
-      '<polygon points="' + bandPoly + '" fill="rgba(216,178,92,0.16)" />' +
-      '<path d="' + histPath + '" fill="none" stroke="#b8c4d4" stroke-width="2.1" />' +
+      '<polygon points="' + bandPoly + '" fill="rgba(212,175,99,0.18)" />' +
+      '<path d="' + histPath + '" fill="none" stroke="#B9C6D6" stroke-width="2.2" />' +
       naiveLine + selLine +
-      '<circle cx="' + targX.toFixed(1) + '" cy="' + yOf(Number(sel.final_point)).toFixed(1) + '" r="4.2" fill="#d8b25c"><title>SYNTHETIC Selected (' + esc(selKey) + "): " + esc(sel.final_point) + " [Band: " + esc(sel.band_lower) + " .. " + esc(sel.band_upper) + ", probability=null]</title></circle>" +
-      '<text x="' + xOf(0).toFixed(1) + '" y="' + (H - 10) + '" fill="#9b9fae" font-size="10.5" font-family="monospace">Y1-M01</text>' +
-      '<text x="' + origX.toFixed(1) + '" y="' + (H - 10) + '" fill="#9b9fae" font-size="10.5" text-anchor="middle" font-family="monospace">Origin (Y3-M12)</text>' +
-      '<text x="' + targX.toFixed(1) + '" y="' + (H - 10) + '" fill="#d8b25c" font-size="10.5" text-anchor="end" font-family="monospace">+' + h + "m</text>" +
+      '<circle cx="' + targX.toFixed(1) + '" cy="' + yOf(Number(sel.final_point)).toFixed(1) + '" r="4.5" fill="#D4AF63"><title>Synthetic Selected (' + esc(selKey) + "): " + esc(sel.final_point) + " [Band: " + esc(sel.band_lower) + " .. " + esc(sel.band_upper) + ", probability=null]</title></circle>" +
+      '<text x="' + xOf(0).toFixed(1) + '" y="' + (H - 9) + '" fill="#A4ABB6" font-size="10.5" font-family="monospace">Y1-M01</text>' +
+      '<text x="' + (origX - 6).toFixed(1) + '" y="' + (H - 9) + '" fill="#A4ABB6" font-size="10.5" text-anchor="end" font-family="monospace">Origin (Y3-M12)</text>' +
+      '<text x="' + targX.toFixed(1) + '" y="' + (H - 9) + '" fill="#D4AF63" font-size="10.5" text-anchor="end" font-family="monospace">+' + h + "m</text>" +
       "</svg>" +
       '<div class="chart-legend">' +
-      '<span><i class="dot" style="background:#b8c4d4"></i>Synthetic History (36m)</span>' +
-      '<span><i class="dot" style="background:#d8b25c"></i>Selected Model (' + esc(selKey) + ")</span>" +
-      '<span><i class="dot" style="background:#9b9fae"></i>Naive Baseline</span>' +
-      '<span><i class="dot" style="background:rgba(216,178,92,0.4)"></i>Empirical Error Sensitivity Band (probability = null)</span>' +
+      '<span><i class="legend-dot" style="background:#B9C6D6"></i>Synthetic Series (36m)</span>' +
+      '<span><i class="legend-dot" style="background:#D4AF63"></i>Selected (' + esc(selKey) + ")</span>" +
+      '<span><i class="legend-dot" style="background:#A4ABB6"></i>Naive Baseline</span>' +
+      '<span><i class="legend-dot" style="background:rgba(212,175,99,0.45)"></i>Sensitivity Band (probability = null)</span>' +
       "</div></div>"
     );
   }
 
-  // ---------- Module 1: Overview ----------
+  // ---------- View 1: Overview (Product-First Precious-Metals Showcase) ----------
   function renderOverview() {
-    const m = DATA.meta;
+    const presets = DATA.decomposition_presets;
+    const overviewOptions = [
+      { id: "gold_combined", short: "Gold · Rally" },
+      { id: "gold_offset", short: "Gold · FX Offset" },
+      { id: "silver_swing", short: "Silver · Swing" },
+    ];
+    const active = presets.find((p) => p.id === STATE.overviewPreset) || presets[0];
+    const res = computeExactDecomposition(active.p0, active.p1, active.e0, active.e1);
+    const isSilver = active.metal === "silver";
+    const tourActive = Boolean(typeof TUT !== "undefined" && TUT.active);
+    const signUsd = res.usdNum > 0 ? "+" : "";
+    const signFx = res.fxNum > 0 ? "+" : "";
+    const signTot = res.totalNum > 0 ? "+" : "";
+
     const el = document.getElementById("panel-overview");
     el.innerHTML =
-      '<div class="view-head"><div><h2>GoSil — Precious Metals Accounting &amp; Statistical Research</h2>' +
-      "<p>Frozen historical portfolio showcase built around exact fixed-point accounting, 6-tier price separation, currency decomposition, and disciplined statistical evaluation.</p></div></div>" +
-
-      '<div class="notice notice-gold"><strong>FROZEN — 100% SYNTHETIC SHOWCASE:</strong> ' + esc(m.disclaimer) + "</div>" +
-
-      '<div class="kpi-grid">' +
-      '<div class="kpi"><div class="kpi-label">Fixed-Point Precision</div><div class="kpi-val">e4 / ug</div><div class="kpi-sub">0.0001 TRY &amp; 0.000001 g exact integers · 0 floats</div></div>' +
-      '<div class="kpi"><div class="kpi-label">Troy Ounce Constant</div><div class="kpi-val">31.1034768</div><div class="kpi-sub">Exact grams per troy oz for TRY/g parity</div></div>' +
-      '<div class="kpi"><div class="kpi-label">Price Separation</div><div class="kpi-val">6 Tiers</div><div class="kpi-sub">Spot, FX, Parity, Retail, Bank Spread, Realized Cost</div></div>' +
-      '<div class="kpi"><div class="kpi-label">Private Test Suite</div><div class="kpi-val">' + esc(m.private_pytest_count) + ' / 739</div><div class="kpi-sub">Plus ' + esc(m.private_ui3_checks) + ' UI3 contract &amp; security checks verified</div></div>' +
+      '<div class="ov-hero-band" id="ov-hero-band">' +
+      '<div class="ov-intro" id="ov-intro-block">' +
+      '<h2 class="ov-headline">See what really moves <em>gold and silver prices.</em></h2>' +
+      '<p class="ov-lead">Understand gold and silver price movements, separate international metal changes from exchange-rate effects, compare buying and selling costs, and evaluate statistical forecasting methods in one workspace.</p>' +
+      '<div class="ov-actions">' +
+      '<button type="button" class="btn btn-primary" id="btnOvStartTour"' + (tourActive ? " hidden" : "") + ">Start Guided Tour</button>" +
+      '<button type="button" class="btn" id="btnOvExploreStructure">Explore Pricing</button>' +
+      "</div>" +
       "</div>" +
 
-      '<div class="grid-3">' +
-      '<div class="card"><h3 class="gold-txt">6-Tier Market Structure</h3><p class="muted">Demonstrates why international USD/oz spot and theoretical TRY/g parity must never be conflated with local retail premiums, bank spreads, or realized transaction costs.</p><button class="btn btn-sm" data-jump="structure">Inspect 6 Tiers →</button></div>' +
-      '<div class="card"><h3 class="silver-txt">Currency Decomposition</h3><p class="muted">Interactive exact-arithmetic calculator splitting TRY/g moves into USD metal price, USD/TRY exchange rate, and cross-interaction using <code>31.1034768 g/oz</code>.</p><button class="btn btn-sm" data-jump="decomp">Open Calculator →</button></div>' +
-      '<div class="card"><h3>Append-Only Fixed-Point Ledger</h3><p class="muted">Synthetic gold &amp; silver lots with integer <code>ug</code>/<code>e4</code> accounting, live Alternative-B void toggling, and strict physical-holding isolation.</p><button class="btn btn-sm" data-jump="ledger">Explore Ledger →</button></div>' +
+      '<div class="ov-spotlight" id="ov-focal-stage">' +
+      '<div class="ov-spot-head">' +
+      '<div class="ov-spot-identity">' +
+      '<h2>Price Driver Breakdown <span class="mono ' + (isSilver ? "silver-txt" : "gold-txt") + '">' + (isSilver ? "Ag" : "Au") + "</span></h2>" +
+      "<span>" + esc(active.label) + " (TRY / gram)</span>" +
+      "</div>" +
+      '<div class="ov-spot-tabs" role="group" aria-label="Sample price driver scenario selector">' +
+      overviewOptions.map((opt) =>
+        '<button type="button" class="ov-spot-tab" data-ov-preset="' + esc(opt.id) + '" aria-pressed="' + (opt.id === active.id ? "true" : "false") + '">' + esc(opt.short) + "</button>"
+      ).join("") +
+      "</div></div>" +
+
+      '<div class="ov-spot-summary" id="ov-spot-summary">' +
+      "<span>Parity TRY/g <strong>" + esc(Number(res.g0Str).toFixed(2)) + " → " + esc(Number(res.g1Str).toFixed(2)) + "</strong></span>" +
+      "<span>Metal Effect <strong class=\"" + (isSilver ? "silver-txt" : "gold-txt") + '">' + signUsd + esc(Number(res.usdStr).toFixed(2)) + "</strong></span>" +
+      '<span>FX Effect <strong>' + signFx + esc(Number(res.fxStr).toFixed(2)) + "</strong></span>" +
+      '<span>Total Δ <strong class="' + (res.totalNum >= 0 ? "pos" : "neg") + '">' + signTot + esc(Number(res.totalStr).toFixed(2)) + "</strong></span>" +
       "</div>" +
 
-      '<div class="grid-2">' +
-      '<div class="card"><h3>Spread &amp; 900s Freshness Gate</h3><p class="muted">Interactive generic bank bid/ask spread calculator demonstrating exact <code>mid_relative_spread</code>, <code>immediate_spread_drag</code>, and fail-closed withholding beyond <code>900s</code>.</p><button class="btn btn-sm" data-jump="spread">Test Freshness Gate →</button></div>' +
-      '<div class="card"><h3>Statistical Forecast Evaluation</h3><p class="muted">Walk-forward <code>naive</code> vs <code>drift</code> vs <code>damped_trend</code> comparison showing the 5% development-MAE promotion rule, challenger withholding, and non-probabilistic sensitivity bands.</p><button class="btn btn-sm" data-jump="forecast">Inspect Models →</button></div>' +
-      "</div>";
+      renderDecompositionWaterfallSvg(res, { overview: true, metal: active.metal, boxId: "ov-focal-chart" }) +
 
-    el.querySelectorAll("[data-jump]").forEach((b) => b.addEventListener("click", () => switchTab(b.dataset.jump)));
+      '<div class="ov-spot-foot">' +
+      "<span>100% synthetic example · TRY per gram</span>" +
+      '<button type="button" class="btn btn-sm" id="btnOvOpenDecomp">Open Full Calculator →</button>' +
+      "</div></div>" +
+      "</div>" +
+
+      '<div class="ov-wf-section">' +
+      '<div class="ov-wf-heading">Research Workflows</div>' +
+      '<div class="ov-workflow-grid" id="ov-workflow-strip">' +
+      '<div class="ov-wf-card"><div><h3>Gold &amp; Silver Pricing</h3><p>Compare international spot benchmarks, local retail quotes, and synthetic bank pricing side by side.</p></div><div class="ov-wf-foot"><button type="button" class="btn btn-sm" data-jump="structure">Open Pricing</button></div></div>' +
+      '<div class="ov-wf-card"><div><h3>Holdings &amp; Transactions</h3><p>Explore synthetic gold and silver lots, weighted-average cost, and auditable transaction records.</p></div><div class="ov-wf-foot"><button type="button" class="btn btn-sm" data-jump="ledger">Open Holdings</button></div></div>' +
+      '<div class="ov-wf-card"><div><h3>Buying &amp; Selling Costs</h3><p>Compare synthetic bid-ask spreads, measure immediate buy-to-sell costs, and test quote-age safeguards.</p></div><div class="ov-wf-foot"><button type="button" class="btn btn-sm" data-jump="spread">Open Cost Lab</button></div></div>' +
+      '<div class="ov-wf-card"><div><h3>Forecast Research</h3><p>Test simple baseline and trend models across synthetic sequences to see when forecasts genuinely beat a baseline.</p></div><div class="ov-wf-foot"><button type="button" class="btn btn-sm" data-jump="forecast">Open Forecasts</button></div></div>' +
+      "</div></div>";
+
+    const btnTour = document.getElementById("btnOvStartTour");
+    if (btnTour) btnTour.addEventListener("click", startTutorial);
+    const btnStr = document.getElementById("btnOvExploreStructure");
+    if (btnStr) btnStr.addEventListener("click", () => switchTab("structure"));
+    const btnDec = document.getElementById("btnOvOpenDecomp");
+    if (btnDec) {
+      btnDec.addEventListener("click", () => {
+        STATE.decompPreset = active.id;
+        STATE.p0 = active.p0; STATE.p1 = active.p1; STATE.e0 = active.e0; STATE.e1 = active.e1;
+        switchTab("decomp");
+      });
+    }
+    el.querySelectorAll("[data-ov-preset]").forEach((b) => {
+      b.addEventListener("click", () => {
+        STATE.overviewPreset = b.dataset.ovPreset;
+        renderOverview();
+      });
+    });
+    el.querySelectorAll("[data-jump]").forEach((b) => {
+      b.addEventListener("click", () => switchTab(b.dataset.jump));
+    });
   }
 
-  // ---------- Module 2: Market Structure (6 Tiers) ----------
+  // ---------- View 2: Market Structure (6 Tiers) ----------
   function renderStructure() {
     const el = document.getElementById("panel-structure");
     const bucket = DATA.six_price_tiers[STATE.tierMetal];
+    const isGold = STATE.tierMetal === "gold";
     el.innerHTML =
-      '<div class="view-head"><div><h2>Gold &amp; Silver Market Structure (6 Separate Price Tiers)</h2>' +
-      "<p>GoSil enforces strict semantic boundaries so theoretical parity ratios are never treated as executable bank or dealer quotations.</p></div></div>" +
+      '<div class="section-head"><div><h2>Gold &amp; Silver Market Structure (6 Price Tiers)</h2>' +
+      "<p>Separates international benchmarks and theoretical TRY/gram parity from local retail premiums, bank spreads, and net execution costs.</p></div></div>" +
 
-      '<div class="controls">' +
-      '<button class="btn" id="tier-gold" aria-pressed="' + (STATE.tierMetal === "gold" ? "true" : "false") + '">Gold (Au) — Synthetic Example</button>' +
-      '<button class="btn" id="tier-silver" aria-pressed="' + (STATE.tierMetal === "silver" ? "true" : "false") + '">Silver (Ag) — Synthetic Example</button>' +
+      '<div class="controls-bar" id="structure-controls">' +
+      '<button type="button" class="btn" id="tier-gold" aria-pressed="' + (isGold ? "true" : "false") + '">Gold (Au) — Synthetic Example</button>' +
+      '<button type="button" class="btn" id="tier-silver" aria-pressed="' + (!isGold ? "true" : "false") + '">Silver (Ag) — Synthetic Example</button>' +
       "</div>" +
 
-      '<div class="card"><h3>' + esc(bucket.unit_label) + ' <span class="badge ' + (STATE.tierMetal === "gold" ? "b-gold" : "b-silver") + '">100% SYNTHETIC</span></h3>' +
+      '<div class="card" id="structure-tiers-card"><h3>' + esc(bucket.unit_label) + ' <span class="badge ' + (isGold ? "b-gold" : "b-silver") + '">SYNTHETIC</span></h3>' +
       '<div class="tier-list">' +
       bucket.tiers.map((t) => (
         '<div class="tier-card">' +
         '<div class="tier-top"><span class="badge ' + (t.tier === 3 ? "b-amber" : (t.tier >= 5 ? "b-green" : "b-silver")) + '">TIER ' + t.tier + '</span><span class="mono muted">' + esc(t.unit) + "</span></div>" +
         '<div style="font-weight:700;margin-bottom:4px">' + esc(t.name) + "</div>" +
-        '<div class="tier-val ' + (STATE.tierMetal === "gold" ? "gold-txt" : "silver-txt") + '">' + esc(t.value) + "</div>" +
-        '<p class="muted" style="margin:6px 0 0;font-size:12.5px">' + esc(t.note) + "</p>" +
+        '<div class="tier-val ' + (isGold ? "gold-txt" : "silver-txt") + '">' + esc(t.value) + "</div>" +
+        '<p class="muted" style="margin:6px 0 0;font-size:12px">' + esc(t.note) + "</p>" +
         "</div>"
       )).join("") +
       "</div></div>" +
 
-      '<div class="card"><h3>Visual Price-Layer Divergence (TRY / Gram — Synthetic)</h3>' +
+      '<div class="card" id="structure-bridge-card"><h3>Price-Layer Divergence (TRY / Gram — Synthetic)</h3>' +
       renderTierBridgeSvg(STATE.tierMetal) +
       "</div>";
 
@@ -448,35 +583,37 @@
     document.getElementById("tier-silver").addEventListener("click", () => { STATE.tierMetal = "silver"; renderStructure(); });
   }
 
-  // ---------- Module 3: Currency Decomposition Calculator ----------
+  // ---------- View 3: Currency Decomposition Calculator ----------
   function renderDecomp() {
     const el = document.getElementById("panel-decomp");
     const res = computeExactDecomposition(STATE.p0, STATE.p1, STATE.e0, STATE.e1);
     const presets = DATA.decomposition_presets;
+    const activePreset = presets.find((x) => x.id === STATE.decompPreset);
+    const metal = activePreset ? activePreset.metal : "gold";
 
     el.innerHTML =
-      '<div class="view-head"><div><h2>Exact Currency &amp; Metal Decomposition Calculator</h2>' +
-      "<p>Splits theoretical TRY/gram changes into USD metal contribution, USD/TRY FX contribution, and cross-interaction using exact <code>31.1034768 g/oz</code> arithmetic.</p></div></div>" +
+      '<div class="section-head"><div><h2>Currency &amp; Metal Driver Decomposition</h2>' +
+      "<p>Splits theoretical TRY/gram moves into USD metal price, USD/TRY exchange rate, and cross-interaction using exact <code>31.1034768 g/oz</code> arithmetic.</p></div></div>" +
 
-      '<div class="card"><h3>Synthetic Scenario Presets &amp; Custom Inputs</h3>' +
-      '<div class="controls">' +
-      presets.map((pr) => '<button class="btn btn-sm" data-preset="' + esc(pr.id) + '" aria-pressed="' + (STATE.decompPreset === pr.id ? "true" : "false") + '">' + esc(pr.label) + "</button>").join("") +
+      '<div class="card" id="decomp-main-card"><h3>Synthetic Scenarios &amp; Custom Inputs</h3>' +
+      '<div class="controls-bar" id="decomp-presets">' +
+      presets.map((pr) => '<button type="button" class="btn btn-sm" data-preset="' + esc(pr.id) + '" aria-pressed="' + (STATE.decompPreset === pr.id ? "true" : "false") + '">' + esc(pr.label) + "</button>").join("") +
       "</div>" +
-      '<div class="controls">' +
-      '<div class="field"><label for="inp-p0">Start Metal (USD/oz)</label><input id="inp-p0" type="number" step="0.01" value="' + esc(STATE.p0) + '" /></div>' +
-      '<div class="field"><label for="inp-p1">End Metal (USD/oz)</label><input id="inp-p1" type="number" step="0.01" value="' + esc(STATE.p1) + '" /></div>' +
-      '<div class="field"><label for="inp-e0">Start USD/TRY</label><input id="inp-e0" type="number" step="0.0001" value="' + esc(STATE.e0) + '" /></div>' +
-      '<div class="field"><label for="inp-e1">End USD/TRY</label><input id="inp-e1" type="number" step="0.0001" value="' + esc(STATE.e1) + '" /></div>' +
+      '<div class="controls-bar">' +
+      '<div class="control-group"><label for="inp-p0">Start Metal (USD/oz)</label><input id="inp-p0" type="number" step="0.01" value="' + esc(STATE.p0) + '" /></div>' +
+      '<div class="control-group"><label for="inp-p1">End Metal (USD/oz)</label><input id="inp-p1" type="number" step="0.01" value="' + esc(STATE.p1) + '" /></div>' +
+      '<div class="control-group"><label for="inp-e0">Start USD/TRY</label><input id="inp-e0" type="number" step="0.0001" value="' + esc(STATE.e0) + '" /></div>' +
+      '<div class="control-group"><label for="inp-e1">End USD/TRY</label><input id="inp-e1" type="number" step="0.0001" value="' + esc(STATE.e1) + '" /></div>' +
       "</div>" +
       (!res.valid
         ? '<div class="notice notice-red"><strong>Input Validation Error:</strong> ' + esc(res.error) + "</div>"
-        : '<div class="kpi-grid" style="margin-bottom:14px">' +
-          '<div class="kpi"><div class="kpi-label">Theoretical Start → End</div><div class="kpi-val" style="font-size:16px">' + esc(res.g0Str) + " → " + esc(res.g1Str) + '</div><div class="kpi-sub">Total Δ: ' + esc(res.totalStr) + " TRY/g (" + esc(res.rTotStr) + "%)</div></div>" +
-          '<div class="kpi"><div class="kpi-label">USD Metal Contribution</div><div class="kpi-val gold-txt">' + esc(res.usdStr) + '</div><div class="kpi-sub">TRY/g · Metal return: ' + esc(res.rUsdStr) + "%</div></div>" +
-          '<div class="kpi"><div class="kpi-label">USD/TRY FX Contribution</div><div class="kpi-val silver-txt">' + esc(res.fxStr) + '</div><div class="kpi-sub">TRY/g · FX return: ' + esc(res.rFxStr) + "%</div></div>" +
-          '<div class="kpi"><div class="kpi-label">Cross-Interaction Term</div><div class="kpi-val">' + esc(res.interStr) + '</div><div class="kpi-sub">((P1−P0)×(E1−E0)) ÷ 31.1034768</div></div>' +
+        : '<div class="kpi-grid" id="decomp-kpis">' +
+          '<div class="kpi-card"><div class="kpi-label">Theoretical Start → End</div><div class="kpi-value" style="font-size:15.5px">' + esc(res.g0Str) + " → " + esc(res.g1Str) + '</div><div class="kpi-detail">Total Δ: ' + esc(res.totalStr) + " TRY/g (" + esc(res.rTotStr) + "%)</div></div>" +
+          '<div class="kpi-card"><div class="kpi-label">USD Metal Contribution</div><div class="kpi-value ' + (metal === "silver" ? "silver-txt" : "gold-txt") + '">' + esc(res.usdStr) + '</div><div class="kpi-detail">TRY/g · Metal return: ' + esc(res.rUsdStr) + "%</div></div>" +
+          '<div class="kpi-card"><div class="kpi-label">USD/TRY FX Contribution</div><div class="kpi-value">' + esc(res.fxStr) + '</div><div class="kpi-detail">TRY/g · FX return: ' + esc(res.rFxStr) + "%</div></div>" +
+          '<div class="kpi-card"><div class="kpi-label">Cross-Interaction Term</div><div class="kpi-value">' + esc(res.interStr) + '</div><div class="kpi-detail">((P1 − P0) × (E1 − E0)) ÷ 31.1034768</div></div>' +
           "</div>" +
-          renderDecompositionWaterfallSvg(res)) +
+          renderDecompositionWaterfallSvg(res, { metal: metal, boxId: "decomp-chart-box" })) +
       "</div>";
 
     el.querySelectorAll("[data-preset]").forEach((b) => {
@@ -500,7 +637,7 @@
     });
   }
 
-  // ---------- Module 4: Synthetic Portfolio Ledger ----------
+  // ---------- View 4: Portfolio Ledger ----------
   function renderLedger() {
     const el = document.getElementById("panel-ledger");
     const summary = computeLedgerSummary(STATE.voidApplied);
@@ -508,27 +645,27 @@
     const physicals = DATA.synthetic_ledger.physical_holdings;
 
     el.innerHTML =
-      '<div class="view-head"><div><h2>Synthetic Fixed-Point Portfolio Ledger</h2>' +
-      "<p>Exact integer accounting (<code>ug</code> = 10⁻⁶ g, <code>e4</code> = 10⁻⁴ TRY), append-only Alternative-B voids, and strict physical-lot separation.</p></div></div>" +
+      '<div class="section-head"><div><h2>Fixed-Point Portfolio Ledger</h2>' +
+      "<p>Exact integer accounting (<code>ug</code> = 10⁻⁶ g, <code>e4</code> = 10⁻⁴ TRY), append-only void reversals, and strict physical-lot isolation.</p></div></div>" +
 
-      '<div class="notice notice-silver"><strong>100% SYNTHETIC LEDGER:</strong> All quantities, costs, and timestamps below are fabricated educational entries. Zero real owner balances, receipts, or account IDs exist in this showcase.</div>' +
+      '<div class="notice notice-silver"><strong>Synthetic Ledger Example:</strong> All quantities, costs, and timestamps below are fabricated educational entries. Zero real balances, receipts, or account identifiers exist in this preview.</div>' +
 
-      '<div class="controls">' +
-      '<button class="btn" id="toggle-void" aria-pressed="' + (STATE.voidApplied ? "true" : "false") + '">' +
-      (STATE.voidApplied ? "Alternative-B Void Active (TX-003 Typo Voided)" : "Alternative-B Void Removed (TX-003 50g Typo Active)") +
+      '<div class="controls-bar" id="ledger-controls">' +
+      '<button type="button" class="btn" id="toggle-void" aria-pressed="' + (STATE.voidApplied ? "true" : "false") + '">' +
+      (STATE.voidApplied ? "Alternative-B Void Active (TX-003 Typo Reversed)" : "Alternative-B Void Removed (TX-003 50g Typo Active)") +
       "</button>" +
       "</div>" +
 
-      '<div class="kpi-grid">' +
-      '<div class="kpi"><div class="kpi-label">Synthetic Gold (995‰)</div><div class="kpi-val gold-txt">' + esc(fmtUgToGrams(summary.gold.balance_ug)) + '</div><div class="kpi-sub">Exact integer: ' + esc(summary.gold.balance_ug.toLocaleString("en-US")) + " ug</div></div>" +
-      '<div class="kpi"><div class="kpi-label">Gold Weighted-Avg Cost</div><div class="kpi-val">' + esc(fmtE4ToTry(summary.gold.avg_cost_e4_per_g)) + '/g</div><div class="kpi-sub">Total Cost: ' + esc(fmtE4ToTry(summary.gold.total_cost_e4)) + "</div></div>" +
-      '<div class="kpi"><div class="kpi-label">Synthetic Silver (999‰)</div><div class="kpi-val silver-txt">' + esc(fmtUgToGrams(summary.silver.balance_ug)) + '</div><div class="kpi-sub">Exact integer: ' + esc(summary.silver.balance_ug.toLocaleString("en-US")) + " ug</div></div>" +
-      '<div class="kpi"><div class="kpi-label">Silver Weighted-Avg Cost</div><div class="kpi-val">' + esc(fmtE4ToTry(summary.silver.avg_cost_e4_per_g)) + '/g</div><div class="kpi-sub">Total Cost: ' + esc(fmtE4ToTry(summary.silver.total_cost_e4)) + "</div></div>" +
+      '<div class="kpi-grid" id="ledger-kpis">' +
+      '<div class="kpi-card"><div class="kpi-label">Synthetic Gold (995‰)</div><div class="kpi-value gold-txt">' + esc(fmtUgToGrams(summary.gold.balance_ug)) + '</div><div class="kpi-detail">Exact integer: ' + esc(summary.gold.balance_ug.toLocaleString("en-US")) + " ug</div></div>" +
+      '<div class="kpi-card"><div class="kpi-label">Gold Weighted-Avg Cost</div><div class="kpi-value">' + esc(fmtE4ToTry(summary.gold.avg_cost_e4_per_g)) + '/g</div><div class="kpi-detail">Total Cost: ' + esc(fmtE4ToTry(summary.gold.total_cost_e4)) + "</div></div>" +
+      '<div class="kpi-card"><div class="kpi-label">Synthetic Silver (999‰)</div><div class="kpi-value silver-txt">' + esc(fmtUgToGrams(summary.silver.balance_ug)) + '</div><div class="kpi-detail">Exact integer: ' + esc(summary.silver.balance_ug.toLocaleString("en-US")) + " ug</div></div>" +
+      '<div class="kpi-card"><div class="kpi-label">Silver Weighted-Avg Cost</div><div class="kpi-value">' + esc(fmtE4ToTry(summary.silver.avg_cost_e4_per_g)) + '/g</div><div class="kpi-detail">Total Cost: ' + esc(fmtE4ToTry(summary.silver.total_cost_e4)) + "</div></div>" +
       "</div>" +
 
-      '<div class="card"><h3>Append-Only Financial Transaction Journal (UPDATE / DELETE Blocked)</h3>' +
-      '<p class="card-sub">Toggle the Alternative-B void above to observe how a decimal typo (<code>TX-003</code>) is reversed strictly by appending <code>TX-003-VOID</code> without mutating historical rows.</p>' +
-      '<div class="table-wrap"><table><thead><tr><th>Entry ID</th><th>Timestamp (UTC)</th><th>Instrument</th><th>Side</th><th class="num">Mass (g)</th><th class="num">Unit Price</th><th class="num">Net Total (e4 TRY)</th><th>State</th></tr></thead><tbody>' +
+      '<div class="card" id="ledger-journal-card"><h3>Append-Only Financial Transaction Journal (UPDATE / DELETE Blocked)</h3>' +
+      '<p class="card-sub">Toggle the void control above to see how a decimal typo (<code>TX-003</code>) is reversed strictly by appending <code>TX-003-VOID</code> without editing historical rows.</p>' +
+      '<div class="table-wrap" id="ledger-table-wrap"><table><thead><tr><th>Entry ID</th><th>Timestamp (UTC)</th><th>Instrument</th><th>Side</th><th class="num">Mass (g)</th><th class="num">Unit Price</th><th class="num">Net Total (e4 TRY)</th><th>State</th></tr></thead><tbody>' +
       entries.map((tx) => {
         const isVoided = STATE.voidApplied && tx.voidable_demo;
         return (
@@ -546,7 +683,7 @@
       }).join("") +
       "</tbody></table></div></div>" +
 
-      '<div class="card"><h3>Isolated Physical Holdings Ledger (Bank Quotes Never Applied)</h3>' +
+      '<div class="card" id="ledger-physical-card"><h3>Isolated Physical Holdings Ledger (Bank Quotes Never Applied)</h3>' +
       '<p class="card-sub">Physical coins and bars track exact remaining gross mass and fine mass (<code>(gross_ug × fineness_milli) // 1000</code>) and remain strictly isolated from bank quotes.</p>' +
       '<div class="table-wrap"><table><thead><tr><th>Lot ID</th><th>Synthetic Description</th><th class="num">Remaining Pieces</th><th class="num">Remaining Gross</th><th class="num">Exact Fine Mass</th><th>Bank Quote Applied?</th><th>Valuation Status</th></tr></thead><tbody>' +
       physicals.map((ph) => {
@@ -573,7 +710,7 @@
     });
   }
 
-  // ---------- Module 5: Spread & Quote Freshness ----------
+  // ---------- View 5: Spread & Quote Freshness ----------
   function renderSpread() {
     const el = document.getElementById("panel-spread");
     const sp = computeSpreadMetrics(STATE.bidStr, STATE.askStr);
@@ -592,34 +729,34 @@
     }
 
     el.innerHTML =
-      '<div class="view-head"><div><h2>Generic Bank Spread &amp; 900s Quote Freshness Gate</h2>' +
-      "<p>Demonstrates GoSil's exact spread drag formulas and fail-closed withholding when quotes exceed the 900-second (15-minute) eligibility window or fail price sanity checks.</p></div></div>" +
+      '<div class="section-head"><div><h2>Bank Spread &amp; 900s Quote Freshness Gate</h2>' +
+      "<p>Measures exact bid-ask spread drag and enforces fail-closed withholding when quotes exceed the 900-second (15-minute) eligibility window or fail price sanity checks.</p></div></div>" +
 
-      '<div class="card"><h3>Interactive Synthetic Quote Controls</h3>' +
-      '<div class="controls">' +
-      '<button class="btn btn-sm" id="sp-gold" aria-pressed="' + (STATE.spreadMetal === "gold" ? "true" : "false") + '">Synthetic Gold Preset</button>' +
-      '<button class="btn btn-sm" id="sp-silver" aria-pressed="' + (STATE.spreadMetal === "silver" ? "true" : "false") + '">Synthetic Silver Preset</button>' +
-      '<button class="btn btn-sm" id="sp-stale">Test Stale (901s)</button>' +
-      '<button class="btn btn-sm" id="sp-boundary">Test Exact Boundary (900s)</button>' +
-      '<button class="btn btn-sm" id="sp-malformed">Test Malformed (Ask &lt; Bid)</button>' +
+      '<div class="card" id="spread-main-card"><h3>Interactive Synthetic Quote Controls</h3>' +
+      '<div class="controls-bar" id="spread-controls">' +
+      '<button type="button" class="btn btn-sm" id="sp-gold" aria-pressed="' + (STATE.spreadMetal === "gold" ? "true" : "false") + '">Synthetic Gold Preset</button>' +
+      '<button type="button" class="btn btn-sm" id="sp-silver" aria-pressed="' + (STATE.spreadMetal === "silver" ? "true" : "false") + '">Synthetic Silver Preset</button>' +
+      '<button type="button" class="btn btn-sm" id="sp-stale">Test Stale (901s)</button>' +
+      '<button type="button" class="btn btn-sm" id="sp-boundary">Test Boundary (900s)</button>' +
+      '<button type="button" class="btn btn-sm" id="sp-malformed">Test Malformed (Ask &lt; Bid)</button>' +
       "</div>" +
-      '<div class="controls">' +
-      '<div class="field"><label for="inp-bid">Generic Bank Bid (TRY/g)</label><input id="inp-bid" type="number" step="0.01" value="' + esc(STATE.bidStr) + '" /></div>' +
-      '<div class="field"><label for="inp-ask">Generic Bank Ask (TRY/g)</label><input id="inp-ask" type="number" step="0.01" value="' + esc(STATE.askStr) + '" /></div>' +
-      '<div class="field" style="flex:1;min-width:220px"><label for="inp-age">Quote Age: <strong class="mono">' + STATE.quoteAgeSec + 's</strong> (Limit: 900s)</label><input id="inp-age" type="range" min="0" max="1800" step="1" value="' + STATE.quoteAgeSec + '" /></div>' +
+      '<div class="controls-bar">' +
+      '<div class="control-group"><label for="inp-bid">Generic Bank Bid (TRY/g)</label><input id="inp-bid" type="number" step="0.01" value="' + esc(STATE.bidStr) + '" /></div>' +
+      '<div class="control-group"><label for="inp-ask">Generic Bank Ask (TRY/g)</label><input id="inp-ask" type="number" step="0.01" value="' + esc(STATE.askStr) + '" /></div>' +
+      '<div class="control-group" style="flex:1;min-width:210px"><label for="inp-age">Quote Age: <strong class="mono">' + STATE.quoteAgeSec + 's</strong> (Cutoff: 900s)</label><input id="inp-age" type="range" min="0" max="1800" step="1" value="' + STATE.quoteAgeSec + '" /></div>' +
       "</div>" +
 
       (!sp.valid
-        ? '<div class="notice notice-red"><strong>' + esc(sp.code) + ":</strong> " + esc(sp.error) + " All downstream decision comparisons are strictly <strong>WITHHELD</strong>.</div>"
+        ? '<div class="notice notice-red" id="spread-status-box"><strong>' + esc(sp.code) + ":</strong> " + esc(sp.error) + " All downstream comparisons are strictly <strong>WITHHELD</strong>.</div>"
         : (isFresh
-            ? '<div class="notice notice-green"><strong>ELIGIBLE (' + STATE.quoteAgeSec + 's &lt;= 900s):</strong> Generic bank quote passes freshness and <code>ask &gt;= bid</code> invariants. Calculations below are descriptive gross comparisons (before tax) — never BUY/SELL instructions.</div>'
-            : '<div class="notice notice-red"><strong>STALE — WITHHELD (' + STATE.quoteAgeSec + 's &gt; 900s):</strong> Quote exceeds the 900-second eligibility cutoff. Executable gross valuation and decision comparisons are fail-closed <strong>WITHHELD</strong>.</div>')) +
+            ? '<div class="notice notice-green" id="spread-status-box"><strong>ELIGIBLE (' + STATE.quoteAgeSec + 's &lt;= 900s):</strong> Generic bank quote passes freshness and <code>ask &gt;= bid</code> checks. Figures below are descriptive gross comparisons (before tax) — never BUY/SELL instructions.</div>'
+            : '<div class="notice notice-red" id="spread-status-box"><strong>STALE — WITHHELD (' + STATE.quoteAgeSec + 's &gt; 900s):</strong> Quote exceeds the 900-second eligibility cutoff. Gross valuation and decision comparisons are fail-closed <strong>WITHHELD</strong>.</div>')) +
 
-      '<div class="kpi-grid" style="margin-bottom:0">' +
-      '<div class="kpi"><div class="kpi-label">Eligibility Status</div><div class="kpi-val">' + (isEligible ? '<span class="pos">ELIGIBLE</span>' : '<span class="neg">WITHHELD</span>') + '</div><div class="kpi-sub">Cutoff: &lt;= 900s &amp; ask &gt;= bid</div></div>' +
-      '<div class="kpi"><div class="kpi-label">Mid-Relative Spread</div><div class="kpi-val">' + esc(sp.valid ? sp.midSpreadStr : "WITHHELD") + '</div><div class="kpi-sub">2 × (ask − bid) ÷ (ask + bid)</div></div>' +
-      '<div class="kpi"><div class="kpi-label">Immediate Spread Drag</div><div class="kpi-val">' + esc(sp.valid ? sp.dragStr : "WITHHELD") + '</div><div class="kpi-sub">(ask − bid) ÷ ask (instant buy→sell loss)</div></div>' +
-      '<div class="kpi"><div class="kpi-label">Synthetic Gross Bid (' + esc(sampleGrams.split(".")[0]) + 'g)</div><div class="kpi-val" style="font-size:17px">' + esc(grossBidStr) + '</div><div class="kpi-sub">Spread friction: ' + esc(roundTripCostStr) + " (before tax)</div></div>" +
+      '<div class="kpi-grid" id="spread-kpi-grid" style="margin-bottom:0">' +
+      '<div class="kpi-card"><div class="kpi-label">Eligibility Status</div><div class="kpi-value">' + (isEligible ? '<span class="pos">ELIGIBLE</span>' : '<span class="neg">WITHHELD</span>') + '</div><div class="kpi-detail">Rule: age &lt;= 900s &amp; ask &gt;= bid</div></div>' +
+      '<div class="kpi-card"><div class="kpi-label">Mid-Relative Spread</div><div class="kpi-value">' + esc(sp.valid ? sp.midSpreadStr : "WITHHELD") + '</div><div class="kpi-detail">2 × (ask − bid) ÷ (ask + bid)</div></div>' +
+      '<div class="kpi-card"><div class="kpi-label">Immediate Spread Drag</div><div class="kpi-value">' + esc(sp.valid ? sp.dragStr : "WITHHELD") + '</div><div class="kpi-detail">(ask − bid) ÷ ask (instant buy→sell drag)</div></div>' +
+      '<div class="kpi-card"><div class="kpi-label">Synthetic Gross Bid (' + esc(sampleGrams.split(".")[0]) + 'g)</div><div class="kpi-value" style="font-size:16.5px">' + esc(grossBidStr) + '</div><div class="kpi-detail">Spread friction: ' + esc(roundTripCostStr) + " (before tax)</div></div>" +
       "</div></div>";
 
     document.getElementById("sp-gold").addEventListener("click", () => {
@@ -636,7 +773,7 @@
     document.getElementById("inp-age").addEventListener("input", (ev) => { STATE.quoteAgeSec = Number(ev.target.value); renderSpread(); });
   }
 
-  // ---------- Module 6: Statistical Forecast Evaluation ----------
+  // ---------- View 6: Statistical Forecast Evaluation ----------
   function renderForecast() {
     const el = document.getElementById("panel-forecast");
     const list = DATA.forecast_evaluation.synthetic_series;
@@ -645,20 +782,20 @@
     const models = ["naive", "drift", "damped_trend"].map((k) => hObj.models[k]);
 
     el.innerHTML =
-      '<div class="view-head"><div><h2>Statistical Forecast Evaluation (Walk-Forward Methodology)</h2>' +
-      "<p>Illustrates GoSil's purged chronological validation, 5% development-MAE challenger promotion gate, and non-probabilistic sensitivity bands (<code>probability: null</code>).</p></div></div>" +
+      '<div class="section-head"><div><h2>Statistical Forecast Evaluation</h2>' +
+      "<p>Walk-forward chronological validation comparing <code>naive</code>, <code>drift</code>, and <code>damped_trend</code> under a 5% development-MAE promotion gate and non-probabilistic sensitivity bands.</p></div></div>" +
 
-      '<div class="notice notice-gold"><strong>METHODOLOGY DEMONSTRATION ONLY:</strong> Charts and tables below run GoSil\'s exact classical formulas over <strong>100% synthetic 36-month sequences</strong>. They do not predict real gold or silver prices and contain zero IMF/BIS observations.</div>' +
+      '<div class="notice notice-gold" id="forecast-notice"><strong>Methodology Demonstration Only:</strong> Charts and tables below run GoSil\'s classical formulas over <strong>100% synthetic 36-month sequences</strong>. They do not predict real gold or silver prices and contain zero external market observations.</div>' +
 
-      '<div class="card">' +
-      '<div class="controls">' +
-      list.map((s, i) => '<button class="btn btn-sm" data-fseries="' + i + '" aria-pressed="' + (STATE.forecastSeriesIdx === i ? "true" : "false") + '">' + esc(s.name) + "</button>").join("") +
-      '<button class="btn btn-sm" data-fhor="3" aria-pressed="' + (STATE.forecastHorizon === "3" ? "true" : "false") + '">Horizon: 3 Months</button>' +
-      '<button class="btn btn-sm" data-fhor="6" aria-pressed="' + (STATE.forecastHorizon === "6" ? "true" : "false") + '">Horizon: 6 Months</button>' +
+      '<div class="card" id="forecast-main-card">' +
+      '<div class="controls-bar" id="forecast-controls">' +
+      list.map((s, i) => '<button type="button" class="btn btn-sm" data-fseries="' + i + '" aria-pressed="' + (STATE.forecastSeriesIdx === i ? "true" : "false") + '">' + esc(s.name) + "</button>").join("") +
+      '<button type="button" class="btn btn-sm" data-fhor="3" aria-pressed="' + (STATE.forecastHorizon === "3" ? "true" : "false") + '">Horizon: 3 Months</button>' +
+      '<button type="button" class="btn btn-sm" data-fhor="6" aria-pressed="' + (STATE.forecastHorizon === "6" ? "true" : "false") + '">Horizon: 6 Months</button>' +
       "</div>" +
-      '<p class="muted" style="margin:0 0 12px">' + esc(series.description) + " · Selected model: <strong class=\"gold-txt mono\">" + esc(hObj.selected_model) + "</strong></p>" +
+      '<p class="muted" id="forecast-summary-line" style="margin:0 0 12px">' + esc(series.description) + ' · Selected model: <strong class="gold-txt mono">' + esc(hObj.selected_model) + "</strong></p>" +
       renderForecastSvg(series, hObj) +
-      '<div class="table-wrap" style="margin-top:16px"><table><thead><tr><th>Model</th><th class="num">Dev MAE</th><th class="num">Test MAE</th><th class="num">Final Point</th><th class="num">Sensitivity Band (p = null)</th><th>Promotion Gate (≥ 5% vs Naive)</th></tr></thead><tbody>' +
+      '<div class="table-wrap" id="forecast-table-wrap" style="margin-top:14px"><table><thead><tr><th>Model</th><th class="num">Dev MAE</th><th class="num">Test MAE</th><th class="num">Final Point</th><th class="num">Sensitivity Band (p = null)</th><th>Promotion Gate (≥ 5% vs Naive)</th></tr></thead><tbody>' +
       models.map((m) => (
         "<tr>" +
         '<td class="mono"><strong>' + esc(m.model) + "</strong></td>" +
@@ -672,7 +809,7 @@
       "</tbody></table></div></div>" +
 
       '<div class="card"><h3>Qualitative Summary of Private Historical Research Findings</h3>' +
-      '<p class="card-sub">Reported honestly from GoSil\'s frozen retrospective evaluations — zero external dataset values are retained or redistributed here.</p>' +
+      '<p class="card-sub">Reported from GoSil\'s frozen retrospective evaluations — zero external dataset values are retained or redistributed here.</p>' +
       '<ul class="muted" style="margin:0;padding-left:18px">' +
       DATA.forecast_evaluation.historical_qualitative_findings.map((f) => '<li style="margin-bottom:6px">' + esc(f) + "</li>").join("") +
       "</ul></div>";
@@ -681,63 +818,63 @@
     el.querySelectorAll("[data-fhor]").forEach((b) => b.addEventListener("click", () => { STATE.forecastHorizon = b.dataset.fhor; renderForecast(); }));
   }
 
-  // ---------- Module 7: Architecture & Evidence ----------
+  // ---------- View 7: Architecture & Evidence (Level 3 Technical Reference) ----------
   function renderArch() {
     const el = document.getElementById("panel-arch");
     el.innerHTML =
-      '<div class="view-head"><div><h2>Local-First Architecture, Security Controls &amp; Evidence</h2>' +
-      "<p>High-level system boundaries of the frozen private GoSil engine and its isolated 100% synthetic showcase.</p></div></div>" +
+      '<div class="section-head"><div><h2>System Architecture &amp; Engineering Provenance</h2>' +
+      "<p>Separation between the frozen local-first private Python/SQLite engine and this 100% synthetic browser preview.</p></div></div>" +
 
-      '<div class="card"><h3>System &amp; Privacy Boundary Diagram (Original Vector Artwork)</h3>' +
+      '<div class="card"><h3>Local-First Vault &amp; Preview Boundary</h3>' +
       '<div class="chart-box">' +
-      '<svg viewBox="0 0 900 250" role="img" aria-label="GoSil local-first architecture showing Private SQLite Vault outside Git, Fixed-Point Core Engine, Locked Read-Only Bridge, and 100% Synthetic Public Showcase">' +
-      '<defs><marker id="garr" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,1 L10,5 L0,9 z" fill="#d8b25c" /></marker></defs>' +
-      '<rect x="16" y="24" width="250" height="200" rx="8" fill="#181820" stroke="#e06363" stroke-width="1.5" stroke-dasharray="5 3" />' +
-      '<text x="30" y="50" fill="#f79999" font-size="13" font-weight="700">Private Local Vault (Outside Git)</text>' +
-      '<text x="30" y="72" fill="#9b9fae" font-size="11.5">• Mode 0700 dir / 0600 SQLite DB</text>' +
-      '<text x="30" y="92" fill="#9b9fae" font-size="11.5">• STRICT Append-Only Schema v1</text>' +
-      '<text x="30" y="112" fill="#9b9fae" font-size="11.5">• Triggers block UPDATE / DELETE</text>' +
-      '<text x="30" y="132" fill="#9b9fae" font-size="11.5">• SHA-256 Verified Online Backups</text>' +
-      '<text x="30" y="164" fill="#e06363" font-size="11" font-weight="700">HARD LOCKED: First-Read = False</text>' +
-      '<text x="30" y="184" fill="#737788" font-size="10.5">Never accessed by public showcase</text>' +
+      '<svg viewBox="0 0 900 246" role="img" aria-label="GoSil local-first architecture showing Private SQLite Vault outside Git, Fixed-Point Core Engine, and 100% Synthetic Public Preview">' +
+      '<defs><marker id="garr" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,1 L10,5 L0,9 z" fill="#D4AF63" /></marker></defs>' +
+      '<rect x="16" y="22" width="250" height="200" rx="8" fill="#181A1E" stroke="#C96A6A" stroke-width="1.5" stroke-dasharray="5 3" />' +
+      '<text x="30" y="48" fill="#E8A2A2" font-size="13" font-weight="700">Private Local Vault (Outside Git)</text>' +
+      '<text x="30" y="70" fill="#A4ABB6" font-size="11.5">• Mode 0700 dir / 0600 SQLite DB</text>' +
+      '<text x="30" y="90" fill="#A4ABB6" font-size="11.5">• STRICT Append-Only Schema v1</text>' +
+      '<text x="30" y="110" fill="#A4ABB6" font-size="11.5">• Triggers block UPDATE / DELETE</text>' +
+      '<text x="30" y="130" fill="#A4ABB6" font-size="11.5">• SHA-256 Verified Online Backups</text>' +
+      '<text x="30" y="162" fill="#E28686" font-size="11" font-weight="700">HARD LOCKED: First-Read = False</text>' +
+      '<text x="30" y="182" fill="#7B8391" font-size="10.5">Never accessed by public preview</text>' +
 
-      '<rect x="322" y="24" width="260" height="200" rx="8" fill="#181820" stroke="#d8b25c" stroke-width="1.6" />' +
-      '<text x="336" y="50" fill="#d8b25c" font-size="13" font-weight="700">Frozen Private Engine (Python 3.11+)</text>' +
-      '<text x="336" y="72" fill="#eeeff2" font-size="11.5">Zero Runtime Third-Party Dependencies</text>' +
-      '<text x="336" y="94" fill="#9b9fae" font-size="11.5">• Exact e4 TRY / ug Mass / Fraction</text>' +
-      '<text x="336" y="114" fill="#9b9fae" font-size="11.5">• 6-Tier Price &amp; 900s Freshness Gate</text>' +
-      '<text x="336" y="134" fill="#9b9fae" font-size="11.5">• Purged Walk-Forward Forecast Core</text>' +
-      '<text x="336" y="154" fill="#9b9fae" font-size="11.5">• 127.0.0.1 Loopback + CSRF + No-Store</text>' +
-      '<text x="336" y="188" fill="#4dc28a" font-size="11">Verified: 739 pytest + 205 UI3 PASS</text>' +
+      '<rect x="322" y="22" width="260" height="200" rx="8" fill="#181A1E" stroke="#D4AF63" stroke-width="1.6" />' +
+      '<text x="336" y="48" fill="#D4AF63" font-size="13" font-weight="700">Frozen Private Engine (Python 3.11+)</text>' +
+      '<text x="336" y="70" fill="#F1EDE5" font-size="11.5">Zero Runtime Third-Party Dependencies</text>' +
+      '<text x="336" y="92" fill="#A4ABB6" font-size="11.5">• Exact e4 TRY / ug Mass / Fraction</text>' +
+      '<text x="336" y="112" fill="#A4ABB6" font-size="11.5">• 6-Tier Price &amp; 900s Freshness Gate</text>' +
+      '<text x="336" y="132" fill="#A4ABB6" font-size="11.5">• Purged Walk-Forward Forecast Core</text>' +
+      '<text x="336" y="152" fill="#A4ABB6" font-size="11.5">• 127.0.0.1 Loopback + CSRF + No-Store</text>' +
+      '<text x="336" y="186" fill="#6FC496" font-size="11">Verified: 739 pytest + 205 UI3 PASS</text>' +
 
-      '<rect x="638" y="24" width="246" height="200" rx="8" fill="#141419" stroke="#b8c4d4" stroke-width="1.6" />' +
-      '<text x="652" y="50" fill="#b8c4d4" font-size="13" font-weight="700">Public Showcase (This Site)</text>' +
-      '<text x="652" y="72" fill="#eeeff2" font-size="11.5">100% Synthetic · Zero Backend</text>' +
-      '<text x="652" y="94" fill="#9b9fae" font-size="11.5">• Exact 31.1034768 Decomposition</text>' +
-      '<text x="652" y="114" fill="#9b9fae" font-size="11.5">• Synthetic Ledger &amp; Void Toggle</text>' +
-      '<text x="652" y="134" fill="#9b9fae" font-size="11.5">• Spread &amp; 900s Freshness Lab</text>' +
-      '<text x="652" y="154" fill="#9b9fae" font-size="11.5">• Zero IMF/BIS · Zero Bank Names</text>' +
-      '<text x="652" y="188" fill="#d8b25c" font-size="11">Standalone Unit Tests Verified</text>' +
+      '<rect x="638" y="22" width="246" height="200" rx="8" fill="#141619" stroke="#B9C6D6" stroke-width="1.6" />' +
+      '<text x="652" y="48" fill="#B9C6D6" font-size="13" font-weight="700">Static Browser Preview (This Site)</text>' +
+      '<text x="652" y="70" fill="#F1EDE5" font-size="11.5">100% Synthetic · Zero Backend</text>' +
+      '<text x="652" y="92" fill="#A4ABB6" font-size="11.5">• Exact 31.1034768 Decomposition</text>' +
+      '<text x="652" y="112" fill="#A4ABB6" font-size="11.5">• Synthetic Ledger &amp; Void Toggle</text>' +
+      '<text x="652" y="132" fill="#A4ABB6" font-size="11.5">• Spread &amp; 900s Freshness Lab</text>' +
+      '<text x="652" y="152" fill="#A4ABB6" font-size="11.5">• Zero External Feeds · Zero Real Data</text>' +
+      '<text x="652" y="186" fill="#D4AF63" font-size="11">Standalone Offline Tests Verified</text>' +
 
-      '<line x1="266" y1="124" x2="320" y2="124" stroke="#e06363" stroke-width="1.8" stroke-dasharray="4 3" />' +
-      '<line x1="582" y1="124" x2="636" y2="124" stroke="#d8b25c" stroke-width="1.8" marker-end="url(#garr)" />' +
+      '<line x1="266" y1="122" x2="320" y2="122" stroke="#C96A6A" stroke-width="1.8" stroke-dasharray="4 3" />' +
+      '<line x1="582" y1="122" x2="636" y2="122" stroke="#D4AF63" stroke-width="1.8" marker-end="url(#garr)" />' +
       "</svg></div></div>" +
 
       '<div class="grid-2">' +
-      '<div class="card"><h3>Historical &amp; Showcase Test Evidence</h3>' +
+      '<div class="card"><h3>Historical &amp; Preview Verification Record</h3>' +
       '<div class="table-wrap"><table><thead><tr><th>Suite</th><th>Scope</th><th>Status</th></tr></thead><tbody>' +
-      '<tr><td>Private Python + Hypothesis</td><td>Fixed-point math, SQLite triggers, security, CORE1–D23</td><td><span class="badge b-green">739/739 PASS</span></td></tr>' +
-      '<tr><td>Private UI3 Contract Suite</td><td>Offline prototype rendering &amp; contract security</td><td><span class="badge b-green">205/205 PASS</span></td></tr>' +
+      '<tr><td>Private Python + Hypothesis</td><td>Fixed-point math, SQLite triggers, security, CORE1–D23</td><td><span class="badge b-green">739 / 739 PASS</span></td></tr>' +
+      '<tr><td>Private UI3 Contract Suite</td><td>Offline prototype rendering &amp; contract security</td><td><span class="badge b-green">205 / 205 PASS</span></td></tr>' +
       '<tr><td>Public Standalone Suite</td><td>Synthetic math identities, voids, 900s gate, privacy</td><td><span class="badge b-green">VERIFIED</span></td></tr>' +
-      '<tr><td>Live Bank / LLM Prediction</td><td>Bank APIs, live quotes, LLM/AI forecasting</td><td><span class="badge b-red">NOT IMPLEMENTED</span></td></tr>' +
+      '<tr><td>Bank APIs / LLM Prediction</td><td>Live bank quotes, trade execution, LLM price prediction</td><td><span class="badge b-red">NOT IMPLEMENTED</span></td></tr>' +
       "</tbody></table></div></div>" +
 
       '<div class="card"><h3>Known Limitations &amp; Frozen Scope</h3>' +
-      '<ul class="muted" style="margin:0;padding-left:18px">' +
-      '<li style="margin-bottom:6px"><strong>Frozen Project:</strong> Active development is discontinued; deferred real-owner gates remain permanently closed in this archive.</li>' +
-      '<li style="margin-bottom:6px"><strong>No LLM / AI Prediction Engine:</strong> Implements exact fixed-point accounting and classical statistical baselines only.</li>' +
-      '<li style="margin-bottom:6px"><strong>Zero Live Market Data:</strong> No external APIs are contacted; every numeric figure here is synthetic.</li>' +
-      '<li><strong>Non-Advisory:</strong> Gross comparisons omit after-tax liquidation calculations and never constitute investment advice.</li>' +
+      '<ul class="muted" style="margin:0;padding-left:18px;font-size:13px">' +
+      '<li style="margin-bottom:6px"><strong>Frozen Archive (D23, 2026-11-16):</strong> Active feature development is discontinued; deferred real-owner gates remain permanently closed.</li>' +
+      '<li style="margin-bottom:6px"><strong>No LLM Prediction Engine:</strong> Implements exact fixed-point accounting and classical statistical baselines only; no reliable future-price edge is claimed.</li>' +
+      '<li style="margin-bottom:6px"><strong>Zero External Market Data:</strong> External statistical series carry non-retention rules; every numerical example here is 100% synthetic.</li>' +
+      '<li><strong>Non-Advisory:</strong> Gross comparisons omit after-tax liquidation calculations and never constitute financial advice.</li>' +
       "</ul></div></div>";
   }
 
@@ -751,6 +888,676 @@
     else if (STATE.tab === "arch") renderArch();
   }
 
+  // ---------- Interactive Watch Tutorial (Sticky Dock, Adaptive Sequential Guidance, Exact Restoration) ----------
+  const TUTORIAL_STAGES = [
+    {
+      id: "overview",
+      title: "Welcome to GoSil",
+      phases: [
+        {
+          id: "product-intro",
+          label: "Overview",
+          narration: "GoSil helps you explore gold and silver prices, understand the effect of exchange rates, compare buying and selling costs, and evaluate forecasting methods.",
+          targetSelector: "#ov-focal-stage",
+          desktopSelector: "#ov-hero-band",
+          durationMs: 4000,
+          apply: function () {
+            STATE.overviewPreset = "gold_combined";
+            switchTab("overview");
+          },
+        },
+        {
+          id: "scenario-switch",
+          label: "FX Offset",
+          narration: "Switch scenarios right on the Overview: here, an international gold drop (-194.45 TRY/g) is outweighed by a higher exchange rate (+222.23 TRY/g) for a +12.22 TRY/g total rise.",
+          targetSelector: "#ov-focal-stage",
+          desktopSelector: "#ov-hero-band",
+          durationMs: 4000,
+          apply: function () {
+            STATE.overviewPreset = "gold_offset";
+            switchTab("overview");
+          },
+        },
+        {
+          id: "overview-chart",
+          label: "Breakdown",
+          narration: "The breakdown chart updates immediately to show the metal price effect, exchange-rate effect, combined effect, and total TRY/g price change.",
+          targetSelector: "#ov-focal-chart",
+          checkSelector: "#ov-focal-chart svg",
+          onlyIfClipped: true,
+          durationMs: 3400,
+          apply: function () {
+            if (STATE.tab !== "overview" || STATE.overviewPreset !== "gold_offset") {
+              STATE.overviewPreset = "gold_offset";
+              switchTab("overview");
+            }
+          },
+        },
+        {
+          id: "workflow-tour",
+          label: "Workflows",
+          narration: "Jump into any workflow from the Overview: gold and silver pricing, holdings and transaction records, buying and selling costs, or forecast research.",
+          targetSelector: "#ov-workflow-strip",
+          checkSelector: "#ov-workflow-strip",
+          onlyIfClipped: true,
+          durationMs: 3200,
+          apply: function () {
+            if (STATE.tab !== "overview") switchTab("overview");
+          },
+        },
+      ],
+    },
+    {
+      id: "market-structure",
+      title: "Gold & Silver Pricing Layers",
+      phases: [
+        {
+          id: "tier-gold",
+          label: "Gold Pricing",
+          narration: "GoSil keeps six price layers separate—from international spot and theoretical TRY/g parity to local retail quotes, bank spreads, and net purchase cost.",
+          targetSelector: "#structure-tiers-card .tier-card:first-child",
+          desktopSelector: "#structure-tiers-card",
+          durationMs: 3800,
+          apply: function () {
+            STATE.tierMetal = "gold";
+            switchTab("structure");
+          },
+        },
+        {
+          id: "tier-bridge",
+          label: "Price Bridge",
+          narration: "Comparing Tiers 3 through 6 side by side shows why theoretical gram parity never equals an executable bank bid or realized transaction cost.",
+          targetSelector: "#structure-bridge-box",
+          checkSelector: "#structure-bridge-box svg",
+          onlyIfClipped: true,
+          durationMs: 3400,
+          apply: function () {
+            if (STATE.tab !== "structure") switchTab("structure");
+          },
+        },
+        {
+          id: "tier-silver",
+          label: "Silver Costs",
+          narration: "Switching to synthetic Silver (Ag) highlights wider bank bid-ask spreads (7.88% immediate buy-to-sell cost) relative to theoretical gram parity.",
+          targetSelector: "#structure-bridge-box",
+          desktopSelector: "#structure-bridge-card",
+          durationMs: 3600,
+          apply: function () {
+            STATE.tierMetal = "silver";
+            switchTab("structure");
+          },
+        },
+      ],
+    },
+    {
+      id: "currency-drivers",
+      title: "Price Driver Breakdown",
+      phases: [
+        {
+          id: "decomp-calc",
+          label: "FX Offset",
+          narration: "Using the exact 31.1034768 g/oz conversion, the calculator ensures Metal Price Effect + Exchange Rate Effect + Combined Effect equals the exact total TRY/g change.",
+          targetSelector: "#decomp-kpis",
+          desktopSelector: "#decomp-main-card",
+          durationMs: 3800,
+          apply: function () {
+            const pr = DATA.decomposition_presets.find((x) => x.id === "gold_offset") || DATA.decomposition_presets[0];
+            STATE.decompPreset = pr.id;
+            STATE.p0 = pr.p0; STATE.p1 = pr.p1; STATE.e0 = pr.e0; STATE.e1 = pr.e1;
+            switchTab("decomp");
+          },
+        },
+        {
+          id: "decomp-chart",
+          label: "Breakdown",
+          narration: "The breakdown chart shows how the negative metal move (-194.45), positive exchange-rate move (+222.23), and combined effect (-15.56) sum to +12.22 TRY/g.",
+          targetSelector: "#decomp-chart-box",
+          checkSelector: "#decomp-chart-box svg",
+          onlyIfClipped: true,
+          durationMs: 3400,
+          apply: function () {
+            if (STATE.tab !== "decomp") switchTab("decomp");
+          },
+        },
+      ],
+    },
+    {
+      id: "portfolio-ledger",
+      title: "Holdings & Transaction Records",
+      phases: [
+        {
+          id: "ledger-void-on",
+          label: "Void Active",
+          narration: "With the append-only void active, synthetic typo lot TX-003 (50 g) is reversed by TX-003-VOID without editing history—leaving exactly 12.000000 g Gold.",
+          targetSelector: "#ledger-kpis",
+          desktopSelector: "#ledger-controls",
+          durationMs: 3800,
+          apply: function () {
+            STATE.voidApplied = true;
+            switchTab("ledger");
+          },
+        },
+        {
+          id: "ledger-void-off",
+          label: "Typo Active",
+          narration: "Removing the void restores TX-003 (50 g), moving synthetic Gold to 62.000000 g and showing how append-only reversals preserve a full audit trail.",
+          targetSelector: "#ledger-kpis",
+          desktopSelector: "#ledger-controls",
+          durationMs: 3600,
+          apply: function () {
+            STATE.voidApplied = false;
+            switchTab("ledger");
+          },
+        },
+      ],
+    },
+    {
+      id: "spread-freshness",
+      title: "Buying Costs & Quote Freshness",
+      phases: [
+        {
+          id: "spread-eligible",
+          label: "Fresh (420s)",
+          narration: "At 420 seconds old (within the 900s freshness limit), the synthetic Gold quote is eligible and reports both mid-relative spread and immediate buy-to-sell cost.",
+          targetSelector: "#spread-status-box",
+          desktopSelector: "#spread-main-card",
+          durationMs: 3600,
+          apply: function () {
+            STATE.spreadMetal = "gold";
+            STATE.bidStr = DATA.quote_defaults.gold.bid_try_g;
+            STATE.askStr = DATA.quote_defaults.gold.ask_try_g;
+            STATE.quoteAgeSec = 420;
+            switchTab("spread");
+          },
+        },
+        {
+          id: "spread-stale",
+          label: "Stale (901s)",
+          narration: "Moving quote age to 901 seconds crosses the 900s freshness safeguard—gross valuation and downstream comparisons immediately fail closed as WITHHELD.",
+          targetSelector: "#spread-status-box",
+          desktopSelector: "#spread-main-card",
+          durationMs: 3800,
+          apply: function () {
+            STATE.quoteAgeSec = 901;
+            switchTab("spread");
+          },
+        },
+      ],
+    },
+    {
+      id: "forecast-eval",
+      title: "Statistical Forecast Research",
+      phases: [
+        {
+          id: "forecast-trend",
+          label: "Trend · Drift",
+          narration: "On a steady synthetic 36-month sequence, the drift model beats the naive baseline by over 5% on development MAE and shows empirical error sensitivity bounds (p = null).",
+          targetSelector: "#forecast-controls",
+          desktopSelector: "#forecast-main-card",
+          durationMs: 3800,
+          apply: function () {
+            STATE.forecastSeriesIdx = 0;
+            STATE.forecastHorizon = "6";
+            switchTab("forecast");
+          },
+        },
+        {
+          id: "forecast-trend-chart",
+          label: "Trend Chart",
+          narration: "The 6-month walk-forward chart compares the promoted drift projection against the dashed naive baseline and historical-error sensitivity band.",
+          targetSelector: "#forecast-chart-box",
+          checkSelector: "#forecast-chart-box svg",
+          onlyIfClipped: true,
+          durationMs: 3400,
+          apply: function () {
+            if (STATE.tab !== "forecast" || STATE.forecastSeriesIdx !== 0) {
+              STATE.forecastSeriesIdx = 0;
+              STATE.forecastHorizon = "6";
+              switchTab("forecast");
+            }
+          },
+        },
+        {
+          id: "forecast-choppy",
+          label: "Choppy · Naive",
+          narration: "On a choppy synthetic sequence, both trend challengers fail the 5% improvement gate and are withheld—keeping the simple naive baseline active.",
+          targetSelector: "#forecast-controls",
+          desktopSelector: "#forecast-main-card",
+          durationMs: 3800,
+          apply: function () {
+            STATE.forecastSeriesIdx = 1;
+            STATE.forecastHorizon = "6";
+            switchTab("forecast");
+          },
+        },
+        {
+          id: "forecast-choppy-chart",
+          label: "Choppy Chart",
+          narration: "On the choppy sequence, the naive baseline stays selected with wide empirical error bounds rather than manufacturing false trend confidence.",
+          targetSelector: "#forecast-chart-box",
+          checkSelector: "#forecast-chart-box svg",
+          onlyIfClipped: true,
+          durationMs: 3600,
+          apply: function () {
+            if (STATE.tab !== "forecast" || STATE.forecastSeriesIdx !== 1) {
+              STATE.forecastSeriesIdx = 1;
+              STATE.forecastHorizon = "6";
+              switchTab("forecast");
+            }
+          },
+        },
+      ],
+    },
+  ];
+
+  const TUT = {
+    active: false,
+    playing: false,
+    completed: false,
+    stageIndex: 0,
+    phaseIndex: 0,
+    activePhases: [],
+    runToken: 0,
+    timerId: null,
+    resizeTimerId: null,
+    userScrolledAway: false,
+    programmaticScrollUntil: 0,
+    savedManualState: null,
+    savedScrollY: 0,
+    highlightedEl: null,
+  };
+
+  function prefersReducedMotion() {
+    return Boolean(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+  }
+
+  function clearTutorialTimers() {
+    if (TUT.timerId !== null) {
+      clearTimeout(TUT.timerId);
+      TUT.timerId = null;
+    }
+  }
+
+  function clearHighlight() {
+    if (TUT.highlightedEl) {
+      TUT.highlightedEl.classList.remove("tut-target-highlight");
+      TUT.highlightedEl = null;
+    }
+  }
+
+  function getDockBottom() {
+    const dock = document.getElementById("tutorialDock");
+    if (!dock || dock.hidden) return 0;
+    return Math.max(0, Math.round(dock.getBoundingClientRect().bottom));
+  }
+
+  function isElementFullyInClearViewport(selector) {
+    if (!selector) return false;
+    const el = document.querySelector(selector);
+    if (!el) return false;
+    const r = el.getBoundingClientRect();
+    const dockBot = getDockBottom();
+    return r.height > 0 && r.top >= dockBot - 1 && r.bottom <= window.innerHeight + 1;
+  }
+
+  function resolveSelectorForPhase(phase) {
+    if (!phase) return null;
+    const w = window.innerWidth;
+    const h = window.innerHeight;
+    if (phase.desktopSelector) {
+      const el = document.querySelector(phase.desktopSelector);
+      const dockBot = getDockBottom();
+      if (el && el.getBoundingClientRect().height <= (h - dockBot - 12)) {
+        return phase.desktopSelector;
+      }
+      if (w >= 980 && h >= 620) {
+        return phase.desktopSelector;
+      }
+    }
+    return phase.targetSelector;
+  }
+
+  function resolveActivePhasesForStage(stage) {
+    const all = stage.phases || [];
+    if (all.length <= 1) return all.slice();
+    const out = [all[0]];
+    for (let i = 1; i < all.length; i++) {
+      const ph = all[i];
+      if (!ph.onlyIfClipped) {
+        out.push(ph);
+      } else {
+        const checkSel = ph.checkSelector || ph.targetSelector;
+        if (!isElementFullyInClearViewport(checkSel)) {
+          out.push(ph);
+        }
+      }
+    }
+    return out;
+  }
+
+  function currentPhase() {
+    if (TUT.activePhases && TUT.activePhases[TUT.phaseIndex]) {
+      return TUT.activePhases[TUT.phaseIndex];
+    }
+    const st = TUTORIAL_STAGES[TUT.stageIndex];
+    return (st && st.phases && st.phases[0]) || null;
+  }
+
+  function syncTutorialEntryButtons() {
+    const btnHeader = document.getElementById("btnWatchTutorial");
+    if (btnHeader) btnHeader.hidden = TUT.active;
+    const btnOverview = document.getElementById("btnOvStartTour");
+    if (btnOverview) btnOverview.hidden = TUT.active;
+  }
+
+  function updateTutorialChrome() {
+    const dock = document.getElementById("tutorialDock");
+    const badge = document.getElementById("tutStepBadge");
+    const title = document.getElementById("tutStageTitle");
+    const phasePills = document.getElementById("tutPhasePills");
+    const narration = document.getElementById("tutNarration");
+    const scrollNote = document.getElementById("tutScrollNote");
+    const fill = document.getElementById("tutProgressFill");
+    const btnPrev = document.getElementById("btnTutPrev");
+    const btnPlay = document.getElementById("btnTutPlayPause");
+    const btnNext = document.getElementById("btnTutNext");
+    const btnRestart = document.getElementById("btnTutRestart");
+
+    syncTutorialEntryButtons();
+    if (!dock) return;
+    dock.hidden = !TUT.active;
+    if (!TUT.active) return;
+
+    const st = TUTORIAL_STAGES[TUT.stageIndex];
+    const ph = currentPhase();
+    badge.textContent = "Step " + (TUT.stageIndex + 1) + " of " + TUTORIAL_STAGES.length;
+    title.textContent = st.title;
+    narration.textContent = ph ? ph.narration : "";
+    if (scrollNote) scrollNote.hidden = !TUT.userScrolledAway;
+
+    if (phasePills) {
+      if (TUT.activePhases.length > 1) {
+        phasePills.hidden = false;
+        phasePills.innerHTML = TUT.activePhases.map((p, idx) =>
+          '<button type="button" class="tut-phase-btn" data-tut-phase="' + idx + '"' +
+          (idx === TUT.phaseIndex ? ' aria-current="step"' : "") + ">" +
+          esc(p.label || ("View " + (idx + 1))) + "</button>"
+        ).join("");
+        phasePills.querySelectorAll("[data-tut-phase]").forEach((btn) => {
+          btn.addEventListener("click", () => goToPhase(Number(btn.dataset.tutPhase), true));
+        });
+      } else {
+        phasePills.hidden = true;
+        phasePills.innerHTML = "";
+      }
+    }
+
+    const phaseFrac = TUT.activePhases.length > 0 ? (TUT.phaseIndex + 1) / TUT.activePhases.length : 1;
+    const totalPct = ((TUT.stageIndex + phaseFrac) / TUTORIAL_STAGES.length) * 100;
+    if (fill) fill.style.width = Math.min(100, totalPct).toFixed(1) + "%";
+
+    btnPrev.disabled = TUT.stageIndex <= 0;
+    btnNext.disabled = TUT.stageIndex >= TUTORIAL_STAGES.length - 1;
+    if (TUT.completed) {
+      btnPlay.textContent = "Replay";
+      btnPlay.setAttribute("aria-label", "Replay walkthrough from start");
+    } else if (TUT.playing) {
+      btnPlay.textContent = "Pause";
+      btnPlay.setAttribute("aria-label", "Pause walkthrough");
+    } else {
+      btnPlay.textContent = "Play";
+      btnPlay.setAttribute("aria-label", "Resume walkthrough");
+    }
+    if (btnRestart) btnRestart.textContent = TUT.completed ? "Replay" : "Restart";
+  }
+
+  function scrollTargetIntoView(selector, force, instant) {
+    if (!TUT.active || (!force && TUT.userScrolledAway)) return;
+    const target = selector ? document.querySelector(selector) : null;
+    clearHighlight();
+    if (!target) return;
+    target.classList.add("tut-target-highlight");
+    TUT.highlightedEl = target;
+
+    const dockBot = getDockBottom();
+    const rect = target.getBoundingClientRect();
+    const desiredTop = dockBot + 10;
+    const availH = Math.max(80, window.innerHeight - desiredTop - 8);
+    const fitsFully = rect.height <= availH;
+    const alreadyGood = fitsFully
+      ? (rect.top >= dockBot + 4 && rect.bottom <= window.innerHeight - 4)
+      : (Math.abs(rect.top - desiredTop) <= 12);
+
+    if (!alreadyGood) {
+      const targetY = Math.max(0, Math.round(window.scrollY + rect.top - desiredTop));
+      TUT.programmaticScrollUntil = Date.now() + 700;
+      window.scrollTo({
+        top: targetY,
+        behavior: (instant || prefersReducedMotion()) ? "auto" : "smooth",
+      });
+    }
+  }
+
+  function scheduleAutoAdvance(token) {
+    clearTutorialTimers();
+    if (!TUT.active || !TUT.playing) return;
+    const ph = currentPhase();
+    const dwell = (ph && ph.durationMs) || 3600;
+    TUT.timerId = setTimeout(() => {
+      if (!TUT.active || TUT.runToken !== token || !TUT.playing) return;
+      if (TUT.phaseIndex < TUT.activePhases.length - 1) {
+        goToPhase(TUT.phaseIndex + 1, false);
+      } else if (TUT.stageIndex < TUTORIAL_STAGES.length - 1) {
+        goToStage(TUT.stageIndex + 1, false);
+      } else {
+        TUT.playing = false;
+        TUT.completed = true;
+        updateTutorialChrome();
+      }
+    }, dwell);
+  }
+
+  function goToPhase(phaseIdx, resetScrollOptOut, instantScroll) {
+    if (!TUT.active) return;
+    const phases = TUT.activePhases;
+    if (!phases || !phases.length) return;
+    const clamped = Math.max(0, Math.min(phases.length - 1, phaseIdx));
+    TUT.runToken += 1;
+    const token = TUT.runToken;
+    clearTutorialTimers();
+    TUT.phaseIndex = clamped;
+    TUT.completed = false;
+    if (resetScrollOptOut) TUT.userScrolledAway = false;
+
+    const ph = phases[clamped];
+    if (ph.apply) ph.apply();
+    updateTutorialChrome();
+    scrollTargetIntoView(resolveSelectorForPhase(ph), Boolean(resetScrollOptOut), Boolean(instantScroll));
+    const st = TUTORIAL_STAGES[TUT.stageIndex];
+    const fullIdx = st ? st.phases.indexOf(ph) : -1;
+    const nextCandidate = (fullIdx >= 0 && fullIdx + 1 < st.phases.length) ? st.phases[fullIdx + 1] : null;
+    if (nextCandidate && nextCandidate.onlyIfClipped && !TUT.activePhases.includes(nextCandidate)) {
+      const checkSel = nextCandidate.checkSelector || nextCandidate.targetSelector;
+      if (checkSel && !isElementFullyInClearViewport(checkSel)) {
+        TUT.activePhases = TUT.activePhases.slice(0, clamped + 1).concat([nextCandidate], TUT.activePhases.slice(clamped + 1));
+        updateTutorialChrome();
+      }
+    }
+    if (TUT.playing) scheduleAutoAdvance(token);
+  }
+
+  function goToStage(index, resetScrollOptOut) {
+    if (!TUT.active) return;
+    const clamped = Math.max(0, Math.min(TUTORIAL_STAGES.length - 1, index));
+    TUT.runToken += 1;
+    const token = TUT.runToken;
+    clearTutorialTimers();
+    TUT.stageIndex = clamped;
+    TUT.phaseIndex = 0;
+    TUT.completed = false;
+    if (resetScrollOptOut) TUT.userScrolledAway = false;
+
+    const st = TUTORIAL_STAGES[clamped];
+    const firstPhase = st.phases[0];
+    // Pre-populate unconditional phase pills so dock height is accurate before checking clipping
+    TUT.activePhases = st.phases.filter((p, idx) => idx === 0 || !p.onlyIfClipped);
+    if (firstPhase && firstPhase.apply) firstPhase.apply();
+    updateTutorialChrome();
+    const firstSel = resolveSelectorForPhase(firstPhase);
+    scrollTargetIntoView(firstSel, Boolean(resetScrollOptOut), true);
+    TUT.activePhases = resolveActivePhasesForStage(st);
+    updateTutorialChrome();
+    scrollTargetIntoView(firstSel, Boolean(resetScrollOptOut), true);
+    if (TUT.playing) scheduleAutoAdvance(token);
+  }
+
+  function startTutorial() {
+    if (TUT.active) return;
+    TUT.savedManualState = cloneState();
+    TUT.savedScrollY = window.scrollY || 0;
+    TUT.active = true;
+    TUT.playing = true;
+    TUT.completed = false;
+    TUT.userScrolledAway = false;
+    goToStage(0, true);
+  }
+
+  function exitTutorial() {
+    if (!TUT.active) return;
+    TUT.runToken += 1;
+    clearTutorialTimers();
+    clearHighlight();
+    TUT.active = false;
+    TUT.playing = false;
+    TUT.completed = false;
+    TUT.userScrolledAway = false;
+    TUT.activePhases = [];
+    TUT.phaseIndex = 0;
+    updateTutorialChrome();
+
+    const snap = TUT.savedManualState;
+    const prevY = TUT.savedScrollY;
+    TUT.savedManualState = null;
+    if (snap) {
+      restoreState(snap);
+      switchTab(STATE.tab);
+    }
+    TUT.programmaticScrollUntil = Date.now() + 450;
+    window.scrollTo({ top: prevY, behavior: "auto" });
+    const launchBtn = document.getElementById("btnWatchTutorial");
+    if (launchBtn) launchBtn.focus();
+  }
+
+  function setupTutorial() {
+    const btnLaunch = document.getElementById("btnWatchTutorial");
+    const btnPrev = document.getElementById("btnTutPrev");
+    const btnPlay = document.getElementById("btnTutPlayPause");
+    const btnNext = document.getElementById("btnTutNext");
+    const btnRestart = document.getElementById("btnTutRestart");
+    const btnExit = document.getElementById("btnTutExit");
+
+    if (btnLaunch) btnLaunch.addEventListener("click", startTutorial);
+    if (btnPrev) btnPrev.addEventListener("click", () => goToStage(TUT.stageIndex - 1, true));
+    if (btnNext) btnNext.addEventListener("click", () => goToStage(TUT.stageIndex + 1, true));
+    if (btnRestart) {
+      btnRestart.addEventListener("click", () => {
+        TUT.playing = true;
+        TUT.completed = false;
+        goToStage(0, true);
+      });
+    }
+    if (btnPlay) {
+      btnPlay.addEventListener("click", () => {
+        if (!TUT.active) return;
+        if (TUT.completed) {
+          TUT.playing = true;
+          TUT.completed = false;
+          goToStage(0, true);
+          return;
+        }
+        TUT.playing = !TUT.playing;
+        TUT.runToken += 1;
+        clearTutorialTimers();
+        updateTutorialChrome();
+        if (TUT.playing) scheduleAutoAdvance(TUT.runToken);
+      });
+    }
+    if (btnExit) btnExit.addEventListener("click", exitTutorial);
+
+    document.addEventListener("keydown", (ev) => {
+      if (ev.key === "Escape" && TUT.active) {
+        ev.preventDefault();
+        exitTutorial();
+      }
+    });
+
+    window.addEventListener("scroll", () => {
+      if (!TUT.active) return;
+      if (Date.now() < TUT.programmaticScrollUntil) return;
+      if (!TUT.userScrolledAway) {
+        TUT.userScrolledAway = true;
+        updateTutorialChrome();
+      }
+    }, { passive: true });
+
+    window.addEventListener("resize", () => {
+      if (STATE.tab === "overview" || STATE.tab === "structure" || STATE.tab === "decomp" || STATE.tab === "forecast") {
+        renderActiveTab();
+      }
+      if (!TUT.active) return;
+      if (TUT.resizeTimerId !== null) clearTimeout(TUT.resizeTimerId);
+      TUT.programmaticScrollUntil = Date.now() + 800;
+      TUT.resizeTimerId = setTimeout(() => {
+        TUT.resizeTimerId = null;
+        if (!TUT.active) return;
+        const st = TUTORIAL_STAGES[TUT.stageIndex];
+        const prevPhaseId = (currentPhase() && currentPhase().id) || null;
+        renderActiveTab();
+        TUT.activePhases = resolveActivePhasesForStage(st);
+        const matchedIdx = TUT.activePhases.findIndex((p) => p.id === prevPhaseId);
+        TUT.phaseIndex = matchedIdx >= 0 ? matchedIdx : Math.min(TUT.phaseIndex, TUT.activePhases.length - 1);
+        updateTutorialChrome();
+        const ph = currentPhase();
+        scrollTargetIntoView(resolveSelectorForPhase(ph), false, true);
+      }, 140);
+    });
+  }
+
+  window.__GOSIL_TUTORIAL__ = {
+    getState: function () {
+      const st = TUTORIAL_STAGES[TUT.stageIndex] || {};
+      const ph = currentPhase() || {};
+      return {
+        active: TUT.active,
+        playing: TUT.playing,
+        completed: TUT.completed,
+        stageIndex: TUT.stageIndex,
+        stageCount: TUTORIAL_STAGES.length,
+        stageId: st.id || null,
+        phaseIndex: TUT.phaseIndex,
+        phaseCount: TUT.activePhases.length,
+        phaseId: ph.id || null,
+        phaseIds: TUT.activePhases.map((p) => p.id),
+        userScrolledAway: TUT.userScrolledAway,
+        runToken: TUT.runToken,
+        tab: STATE.tab,
+        overviewPreset: STATE.overviewPreset,
+        tierMetal: STATE.tierMetal,
+        decompPreset: STATE.decompPreset,
+        voidApplied: STATE.voidApplied,
+        spreadMetal: STATE.spreadMetal,
+        quoteAgeSec: STATE.quoteAgeSec,
+        forecastSeriesIdx: STATE.forecastSeriesIdx,
+        forecastHorizon: STATE.forecastHorizon,
+      };
+    },
+    goToStage: function (idx) { if (TUT.active) goToStage(idx, true); },
+    goToPhase: function (idx) { if (TUT.active) goToPhase(idx, true, true); },
+    start: startTutorial,
+    exit: exitTutorial,
+  };
+
   setupTabs();
+  setupTutorial();
   renderOverview();
 })();

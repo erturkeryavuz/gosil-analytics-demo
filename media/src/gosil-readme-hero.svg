@@ -1,0 +1,121 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0D0F13" />
+      <stop offset="55%" stop-color="#11151B" />
+      <stop offset="100%" stop-color="#0C0E12" />
+    </linearGradient>
+    <radialGradient id="ambientGlow" cx="72%" cy="44%" r="48%">
+      <stop offset="0%" stop-color="#D4AF63" stop-opacity="0.11" />
+      <stop offset="55%" stop-color="#B9C6D6" stop-opacity="0.045" />
+      <stop offset="100%" stop-color="#0D0F13" stop-opacity="0" />
+    </radialGradient>
+    <linearGradient id="cardGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#181C24" />
+      <stop offset="100%" stop-color="#13161C" />
+    </linearGradient>
+    <linearGradient id="barGold" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#DFBE74" />
+      <stop offset="100%" stop-color="#A88644" />
+    </linearGradient>
+    <linearGradient id="barSilver" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#C8D5E4" />
+      <stop offset="100%" stop-color="#768D9B" />
+    </linearGradient>
+    <linearGradient id="barSlate" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#8FA0C0" />
+      <stop offset="100%" stop-color="#5B6985" />
+    </linearGradient>
+    <linearGradient id="barPos" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#6AC496" />
+      <stop offset="100%" stop-color="#3E8A63" />
+    </linearGradient>
+    <filter id="cardShadow" x="-8%" y="-8%" width="116%" height="118%">
+      <feDropShadow dx="0" dy="22" stdDeviation="28" flood-color="#000000" flood-opacity="0.50" />
+    </filter>
+  </defs>
+
+  <rect width="1600" height="900" fill="url(#bgGrad)" />
+  <rect width="1600" height="900" fill="url(#ambientGlow)" />
+  <rect x="28" y="28" width="1544" height="844" rx="22" fill="none" stroke="#222731" stroke-width="1" />
+
+  <!-- Left Primary Product Identity -->
+  <text x="90" y="246" fill="#F4F0E8" font-family="Georgia, 'Times New Roman', serif"
+        font-size="84" font-weight="700" letter-spacing="-0.8">GoSil</text>
+  <text x="92" y="306" fill="#D4AF63" font-family="Georgia, 'Times New Roman', serif"
+        font-size="33" font-style="italic" font-weight="400">Gold &amp; Silver Market Research</text>
+  <rect x="92" y="338" width="56" height="2.5" rx="1.25" fill="#D4AF63" />
+
+  <text x="92" y="404" fill="#CBD1DB" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
+        font-size="22" font-weight="400">Understand what moves local gold and silver</text>
+  <text x="92" y="438" fill="#CBD1DB" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
+        font-size="22" font-weight="400">prices by separating metal and currency effects.</text>
+
+  <!-- Three Distinct, Non-Redundant User Outcomes -->
+  <line x1="92" y1="498" x2="546" y2="498" stroke="#242934" stroke-width="1" />
+
+  <rect x="92" y="538" width="16" height="2.5" rx="1.25" fill="#D4AF63" />
+  <text x="122" y="546" fill="#ECE7DE" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
+        font-size="19" font-weight="600">Compare global spot, retail, and bank prices</text>
+
+  <rect x="92" y="592" width="16" height="2.5" rx="1.25" fill="#B9C6D6" />
+  <text x="122" y="600" fill="#ECE7DE" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
+        font-size="19" font-weight="600">Inspect holdings &amp; buying and selling costs</text>
+
+  <rect x="92" y="646" width="16" height="2.5" rx="1.25" fill="#67C393" />
+  <text x="122" y="654" fill="#ECE7DE" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
+        font-size="19" font-weight="600">Evaluate statistical forecasting methods</text>
+
+  <!-- Right Software Workspace Preview -->
+  <g filter="url(#cardShadow)">
+    <rect x="678" y="106" width="830" height="670" rx="20" fill="url(#cardGrad)" stroke="#2C3340" stroke-width="1.4" />
+  </g>
+
+  <!-- Workspace Navigation Bar Showing Product Breadth -->
+  <path d="M 698,106 H 1488 A 20,20 0 0 1 1508,126 V 164 H 678 V 126 A 20,20 0 0 1 698,106 Z" fill="#1C2029" />
+  <line x1="678" y1="164" x2="1508" y2="164" stroke="#2A303B" stroke-width="1" />
+
+  <text x="722" y="141" fill="#818A9A" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
+        font-size="14.5" font-weight="500">Pricing</text>
+  <text x="812" y="141" fill="#F4F0E8" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
+        font-size="14.5" font-weight="700">Price Drivers</text>
+  <rect x="812" y="161.5" width="96" height="2.5" fill="#D4AF63" />
+  <text x="946" y="141" fill="#818A9A" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
+        font-size="14.5" font-weight="500">Holdings</text>
+  <text x="1044" y="141" fill="#818A9A" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
+        font-size="14.5" font-weight="500">Buying Costs</text>
+  <text x="1172" y="141" fill="#818A9A" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
+        font-size="14.5" font-weight="500">Forecasts</text>
+
+  <!-- Visualization Header & Gold/Silver Switcher -->
+  <text x="726" y="222" fill="#F4F0E8" font-family="Georgia, 'Times New Roman', serif"
+        font-size="25.5" font-weight="700">Price Driver Breakdown</text>
+
+  <rect x="1264" y="198" width="92" height="32" rx="8" fill="#2A241A" stroke="#D4AF63" stroke-width="1.2" />
+  <text x="1310" y="219" text-anchor="middle" fill="#F3EFE7" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
+        font-size="13.5" font-weight="700">Gold · Au</text>
+  <text x="1414" y="219" text-anchor="middle" fill="#848E9E" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
+        font-size="13.5" font-weight="600">Silver · Ag</text>
+
+  <!-- Calm Proportional Example Context Line -->
+  <text x="726" y="264" fill="#9DA6B5" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
+        font-size="15.5" font-weight="500">Synthetic Example: International Gold −7% vs. Exchange Rate +8%
+    <tspan fill="#5B6473">  ·  </tspan>Total <tspan fill="#72CE9E" font-weight="700">+12.22 TRY/g</tspan></text>
+
+  <line x1="726" y1="292" x2="1460" y2="292" stroke="#232833" stroke-width="1" />
+
+  <!-- Data-Grounded Decomposition Waterfall Chart -->
+  <line x1="748" y1="591.3" x2="1456" y2="591.3" stroke="#222731" stroke-width="1" /><text x="736" y="595.3" text-anchor="end" fill="#7D8696" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12.5">-200</text><line x1="748" y1="536.4" x2="1456" y2="536.4" stroke="#222731" stroke-width="1" /><text x="736" y="540.4" text-anchor="end" fill="#7D8696" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12.5">-100</text><line x1="748" y1="481.5" x2="1456" y2="481.5" stroke="#474F5E" stroke-width="1.5" /><text x="736" y="485.5" text-anchor="end" fill="#7D8696" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12.5">0</text><line x1="748" y1="426.6" x2="1456" y2="426.6" stroke="#222731" stroke-width="1" /><text x="736" y="430.6" text-anchor="end" fill="#7D8696" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12.5">+100</text><line x1="748" y1="371.7" x2="1456" y2="371.7" stroke="#222731" stroke-width="1" /><text x="736" y="375.7" text-anchor="end" fill="#7D8696" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12.5">+200</text>
+  <rect x="789.5" y="481.5" width="94" height="106.8" rx="7" fill="url(#barGold)" stroke="#E2C27A" stroke-opacity="0.45" stroke-width="1" /><text x="836.5" y="609.2" text-anchor="middle" fill="#F4F0E8" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="15.5" font-weight="700">-194.45</text><text x="836.5" y="644" text-anchor="middle" fill="#A4ADB9" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="14.5" font-weight="600">Metal Price</text><text x="836.5" y="664" text-anchor="middle" fill="#A4ADB9" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="14.5" font-weight="600">Effect</text><rect x="966.5" y="359.5" width="94" height="122.0" rx="7" fill="url(#barSilver)" stroke="#C8D5E4" stroke-opacity="0.45" stroke-width="1" /><text x="1013.5" y="347.5" text-anchor="middle" fill="#F4F0E8" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="15.5" font-weight="700">+222.23</text><text x="1013.5" y="644" text-anchor="middle" fill="#A4ADB9" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="14.5" font-weight="600">Exchange Rate</text><text x="1013.5" y="664" text-anchor="middle" fill="#A4ADB9" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="14.5" font-weight="600">Effect</text><rect x="1143.5" y="481.5" width="94" height="8.5" rx="7" fill="url(#barSlate)" stroke="#8FA0C0" stroke-opacity="0.45" stroke-width="1" /><text x="1190.5" y="511.0" text-anchor="middle" fill="#F4F0E8" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="15.5" font-weight="700">-15.56</text><text x="1190.5" y="644" text-anchor="middle" fill="#A4ADB9" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="14.5" font-weight="600">Combined</text><text x="1190.5" y="664" text-anchor="middle" fill="#A4ADB9" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="14.5" font-weight="600">Effect</text><rect x="1320.5" y="474.8" width="94" height="6.7" rx="7" fill="url(#barPos)" stroke="#78D2A4" stroke-opacity="0.45" stroke-width="1" /><text x="1367.5" y="462.8" text-anchor="middle" fill="#F4F0E8" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="15.5" font-weight="700">+12.22</text><text x="1367.5" y="644" text-anchor="middle" fill="#F4F0E8" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="14.5" font-weight="700">Total Price</text><text x="1367.5" y="664" text-anchor="middle" fill="#F4F0E8" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="14.5" font-weight="700">Change</text>
+
+  <!-- Clean Product-First Frame Footer -->
+  <line x1="726" y1="704" x2="1460" y2="704" stroke="#242934" stroke-width="1" />
+  <text x="726" y="742" fill="#9DA6B5" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
+        font-size="14" font-weight="500">TRY per gram · All components sum to total price change</text>
+  <text x="1460" y="742" text-anchor="end" fill="#818A9A" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
+        font-size="13.5">Synthetic example</text>
+
+  <!-- Single Quiet Synthetic Disclosure Footer -->
+  <text x="1508" y="838" text-anchor="end" fill="#747D8C" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
+        font-size="14">100% synthetic educational example · Research only, not investment advice</text>
+</svg>

@@ -1,0 +1,85 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="640" viewBox="0 0 1280 640">
+  <defs>
+    <linearGradient id="sBg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0D0F13" />
+      <stop offset="100%" stop-color="#12161D" />
+    </linearGradient>
+    <radialGradient id="sGlow" cx="72%" cy="46%" r="52%">
+      <stop offset="0%" stop-color="#D4AF63" stop-opacity="0.13" />
+      <stop offset="100%" stop-color="#0D0F13" stop-opacity="0" />
+    </radialGradient>
+    <linearGradient id="sCard" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#191D25" />
+      <stop offset="100%" stop-color="#13171D" />
+    </linearGradient>
+    <linearGradient id="sGold" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#DFBE74" />
+      <stop offset="100%" stop-color="#A88644" />
+    </linearGradient>
+    <linearGradient id="sSilver" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#C8D5E4" />
+      <stop offset="100%" stop-color="#768D9B" />
+    </linearGradient>
+    <linearGradient id="sSlate" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#96A8C8" />
+      <stop offset="100%" stop-color="#5E6D8C" />
+    </linearGradient>
+    <linearGradient id="sPos" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#6AC496" />
+      <stop offset="100%" stop-color="#3E8A63" />
+    </linearGradient>
+    <filter id="sShadow" x="-10%" y="-10%" width="120%" height="122%">
+      <feDropShadow dx="0" dy="18" stdDeviation="24" flood-color="#000000" flood-opacity="0.50" />
+    </filter>
+  </defs>
+
+  <rect width="1280" height="640" fill="url(#sBg)" />
+  <rect width="1280" height="640" fill="url(#sGlow)" />
+  <rect x="22" y="22" width="1236" height="596" rx="20" fill="none" stroke="#232934" stroke-width="1.2" />
+
+  <!-- Left Bold Product Identity (Thumbnail-Optimized at 320x160) -->
+  <text x="74" y="218" fill="#F4F0E8" font-family="Georgia, 'Times New Roman', serif"
+        font-size="90" font-weight="700" letter-spacing="-0.8">GoSil</text>
+  <text x="76" y="280" fill="#D4AF63" font-family="Georgia, 'Times New Roman', serif"
+        font-size="36" font-style="italic" font-weight="400">Gold &amp; Silver Research</text>
+  <rect x="76" y="314" width="58" height="3" rx="1.5" fill="#D4AF63" />
+
+  <text x="76" y="384" fill="#D0D6DF" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
+        font-size="25" font-weight="400">Price drivers, buying costs, holdings,</text>
+  <text x="76" y="422" fill="#D0D6DF" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
+        font-size="25" font-weight="400">and forecasts in one workspace.</text>
+
+  <text x="76" y="548" fill="#7D8695" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
+        font-size="16">Synthetic example · Research only</text>
+
+  <!-- Right Sculptural Workspace Preview -->
+  <g filter="url(#sShadow)">
+    <rect x="640" y="76" width="564" height="488" rx="20" fill="url(#sCard)" stroke="#2E3542" stroke-width="1.5" />
+  </g>
+
+  <path d="M 660,76 H 1184 A 20,20 0 0 1 1204,96 V 132 H 640 V 96 A 20,20 0 0 1 660,76 Z" fill="#1D222C" />
+  <line x1="640" y1="132" x2="1204" y2="132" stroke="#2A303D" stroke-width="1" />
+  <circle cx="674" cy="104" r="5" fill="#D4AF63" />
+  <text x="694" y="109" fill="#7F8898" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
+        font-size="15" font-weight="500">Pricing</text>
+  <text x="776" y="109" fill="#F4F0E8" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
+        font-size="15" font-weight="700">Drivers</text>
+  <text x="862" y="109" fill="#7F8898" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
+        font-size="15" font-weight="500">Holdings</text>
+  <text x="958" y="109" fill="#7F8898" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
+        font-size="15" font-weight="500">Forecasts</text>
+
+  <text x="680" y="186" fill="#F4F0E8" font-family="Georgia, 'Times New Roman', serif"
+        font-size="25" font-weight="700">Price Driver Breakdown</text>
+  <text x="1164" y="184" text-anchor="end" fill="#D4AF63" font-family="ui-monospace, SFMono-Regular, Menlo, monospace"
+        font-size="16" font-weight="700">Au <tspan fill="#5E6776">·</tspan> <tspan fill="#B9C6D6">Ag</tspan></text>
+
+  <line x1="674" y1="266.0" x2="1170" y2="266.0" stroke="#232935" stroke-width="1" />
+  <line x1="674" y1="416.0" x2="1170" y2="416.0" stroke="#232935" stroke-width="1" />
+  <line x1="674" y1="341.0" x2="1170" y2="341.0" stroke="#4A5262" stroke-width="1.6" />
+  <rect x="700.0" y="341.0" width="72" height="97.2" rx="4.5" fill="url(#sGold)" stroke="#E2C27A" stroke-opacity="0.45" stroke-width="1" /><text x="736.0" y="488" text-anchor="middle" fill="#A4ADB9" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="16" font-weight="700">Metal</text><rect x="824.0" y="229.9" width="72" height="111.1" rx="4.5" fill="url(#sSilver)" stroke="#C8D5E4" stroke-opacity="0.45" stroke-width="1" /><text x="860.0" y="488" text-anchor="middle" fill="#A4ADB9" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="16" font-weight="700">FX Rate</text><rect x="948.0" y="341.0" width="72" height="7.8" rx="4.5" fill="url(#sSlate)" stroke="#8FA0C0" stroke-opacity="0.45" stroke-width="1" /><text x="984.0" y="488" text-anchor="middle" fill="#A4ADB9" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="16" font-weight="700">Combined</text><rect x="1072.0" y="334.9" width="72" height="6.1" rx="4.5" fill="url(#sPos)" stroke="#78D2A4" stroke-opacity="0.45" stroke-width="1" /><text x="1108.0" y="488" text-anchor="middle" fill="#F4F0E8" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="16" font-weight="700">Total</text>
+
+  <line x1="680" y1="514" x2="1164" y2="514" stroke="#262C37" stroke-width="1" />
+  <text x="680" y="544" fill="#9DA6B5" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
+        font-size="15" font-weight="500">Synthetic example · TRY / gram</text>
+</svg>
